@@ -15,6 +15,8 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
   dateStrings: true, // Return dates as plain YYYY-MM-DD strings, preserving our plain date design invariant!
   decimalNumbers: true,
   ssl: useSSL ? { rejectUnauthorized: false } : undefined

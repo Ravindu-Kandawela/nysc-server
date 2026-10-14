@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Uploads
+uploads/
+
+# Binaries
+bin/
+*.exe
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

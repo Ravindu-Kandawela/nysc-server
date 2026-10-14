@@ -113,6 +113,113 @@ router.get('/log', async (req, res) => {
   }
 });
 
+// GET /api/auto-sms/oic-summary?batchId=&date=
+// Dedicated endpoint to fetch the daily attendance summary message for the Officer-in-Charge (මධ්‍යස්ථාන භාර නිලධාරී)
+router.get('/oic-summary', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const date = req.query.date || today;
+
+    // 1. Get batch
+    let batchId = req.query.batchId;
+    if (!batchId) {
+      const [b] = await db.query('SELECT id, name FROM batches WHERE status = "active" ORDER BY id ASC LIMIT 1');
+      if (b.length > 0) batchId = b[0].id;
+      else batchId = 1;
+    }
+
+    const [batchRows] = await db.query('SELECT * FROM batches WHERE id = ?', [batchId]);
+    const batch = batchRows[0] || { name: 'NVQ 4' };
+
+    // 2. Settings (Teacher, OIC, Center)
+    const [settingsRows] = await db.query('SELECT k, v FROM settings');
+    const settings = {};
+    settingsRows.forEach(r => { settings[r.k] = r.v; });
+
+    const oicName = settings.center_in_charge_name || settings.oic_name || 'මධ්‍යස්ථාන භාර නිලධාරී තුමා';
+    const oicTitle = settings.center_in_charge_title || settings.oic_title || 'මධ්‍යස්ථාන භාර නිලධාරී';
+    const rawOicPhone = settings.center_in_charge_phone || settings.oic_phone || '';
+    const oicPhone = normalizePhoneForSms(rawOicPhone);
+
+    const teacherName = settings.teacher_name || 'ICT Instructor';
+    const teacherPhone = settings.teacher_phone || '';
+    const centreName = settings.centre_name_si || 'ජාතික තරුණ සේවා සභාව - අකුරැස්ස';
+    const courseTitle = settings.course_title || batch.name || 'ICT (NVQ 4)';
+
+    // 3. Count total active students in this batch
+    const [totRows] = await db.query(
+      'SELECT COUNT(*) as total FROM students WHERE batch_id = ? AND status = "active"',
+      [batchId]
+    );
+    const totalStudents = totRows[0]?.total || 0;
+
+    // 4. Count attendance breakdown for this date
+    const [attRows] = await db.query(
+      'SELECT status, COUNT(*) as cnt FROM attendance WHERE batch_id = ? AND adate = ? GROUP BY status',
+      [batchId, date]
+    );
+
+    let presentCount = 0;
+    let absentCount = 0;
+    let lateCount = 0;
+    let excusedCount = 0;
+
+    for (const r of attRows) {
+      if (r.status === 'P') presentCount = Number(r.cnt);
+      else if (r.status === 'L') lateCount = Number(r.cnt);
+      else if (r.status === 'A') absentCount = Number(r.cnt);
+      else if (r.status === 'E') excusedCount = Number(r.cnt);
+    }
+
+    const totalPresent = presentCount + lateCount;
+    const attendancePercentage = totalStudents > 0 
+      ? Math.round((totalPresent / totalStudents) * 100) 
+      : 0;
+
+    // 5. Build official Sinhala message for OIC (මධ්‍යස්ථාන භාර නිලධාරී)
+    const message = 
+      `[${centreName} - දෛනික පැමිණීමේ වාර්තාව]\n` +
+      `දිනය: ${date} (පෙරවරු 09:00)\n` +
+      `පාඨමාලාව: ${courseTitle}\n\n` +
+      `ගරු ${oicTitle} (${oicName}) වෙත,\n` +
+      `අද දින පැමිණීමේ සාරාංශය පහත පරිදි වේ:\n` +
+      `• මුළු ලියාපදිංචි: ${totalStudents}\n` +
+      `• පැමිණි සිසුන් (Present): ${totalPresent}${lateCount > 0 ? ` (ප්‍රමාද: ${lateCount})` : ''}\n` +
+      `• නොපැමිණි සිසුන් (Absent): ${absentCount}\n` +
+      `${excusedCount > 0 ? `• නිවාඩු (Excused): ${excusedCount}\n` : ''}` +
+      `• පැමිණීමේ ප්‍රතිශතය: ${attendancePercentage}%\n\n` +
+      `උපදේශක: ${teacherName}${teacherPhone ? ' (' + teacherPhone + ')' : ''}`;
+
+    const items = oicPhone ? [{
+      recipient_name: oicName,
+      title: oicTitle,
+      phone: oicPhone,
+      message
+    }] : [];
+
+    res.json({
+      success: true,
+      date,
+      batch_id: batchId,
+      batch_name: batch.name,
+      oic_name: oicName,
+      oic_title: oicTitle,
+      phone: oicPhone,
+      has_phone: Boolean(oicPhone),
+      total_students: totalStudents,
+      present_count: totalPresent,
+      absent_count: absentCount,
+      excused_count: excusedCount,
+      attendance_percentage: attendancePercentage,
+      message,
+      items
+    });
+  } catch (err) {
+    console.error('OIC Auto SMS error:', err);
+    res.status(500).json({ error: 'Failed to generate OIC attendance summary' });
+  }
+});
+
 // GET /api/auto-sms/info (Returns network URLs for setting up iPhone shortcut)
 router.get('/info', async (req, res) => {
   const nets = os.networkInterfaces();
@@ -126,8 +233,9 @@ router.get('/info', async (req, res) => {
   const port = process.env.PORT || 5000;
   res.json({
     localIp,
-    endpointUrl: `http://${localIp}:${port}/api/auto-sms/today`,
-    logUrl: `http://${localIp}:${port}/api/auto-sms/log`
+    endpointUrl: `/api/auto-sms/today`,
+    oicEndpointUrl: `/api/auto-sms/oic-summary`,
+    logUrl: `/api/auto-sms/log`
   });
 });
 

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { syncOffDaysForAllBatches } = require('../services/schedulerService');
 
 // GET /api/holidays
 router.get('/', requireAuth, async (req, res) => {
@@ -36,10 +37,12 @@ router.post('/', requireAuth, async (req, res) => {
     const [result] = await db.query(`
       INSERT INTO holidays (hdate, name, type, is_off, source, verified)
       VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE type = VALUES(type), is_off = VALUES(is_off), verified = VALUES(verified)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), type = VALUES(type), is_off = VALUES(is_off), verified = VALUES(verified)
     `, [hdate, name.trim(), type, is_off ? 1 : 0, source, verified ? 1 : 0]);
 
-    res.status(201).json({ id: result.insertId, message: 'Holiday added successfully' });
+    await syncOffDaysForAllBatches();
+
+    res.status(201).json({ id: result.insertId, message: 'Holiday added and schedule updated' });
   } catch (err) {
     console.error('Holiday add error:', err);
     res.status(500).json({ error: 'Failed to add holiday' });
@@ -52,6 +55,9 @@ router.put('/:id', requireAuth, async (req, res) => {
     const holidayId = req.params.id;
     const { hdate, name, type, is_off, source, verified } = req.body;
 
+    const [prevRows] = await db.query('SELECT hdate, is_off FROM holidays WHERE id = ?', [holidayId]);
+    const prev = prevRows[0];
+
     await db.query(`
       UPDATE holidays
       SET hdate = COALESCE(?, hdate),
@@ -62,6 +68,14 @@ router.put('/:id', requireAuth, async (req, res) => {
           verified = COALESCE(?, verified)
       WHERE id = ?
     `, [hdate, name, type, is_off !== undefined ? (is_off ? 1 : 0) : undefined, source, verified !== undefined ? (verified ? 1 : 0) : undefined, holidayId]);
+
+    if (prev && is_off !== undefined && !is_off) {
+      await db.query(
+        "DELETE FROM day_log WHERE ldate = ? AND status IN ('institute_closed', 'teacher_absent') AND hours_delivered = 0",
+        [prev.hdate]
+      );
+    }
+    await syncOffDaysForAllBatches();
 
     res.json({ message: 'Holiday updated successfully' });
   } catch (err) {
@@ -74,7 +88,15 @@ router.put('/:id', requireAuth, async (req, res) => {
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const holidayId = req.params.id;
+    const [prevRows] = await db.query('SELECT hdate FROM holidays WHERE id = ?', [holidayId]);
     await db.query('DELETE FROM holidays WHERE id = ?', [holidayId]);
+    if (prevRows[0]) {
+      await db.query(
+        "DELETE FROM day_log WHERE ldate = ? AND status IN ('institute_closed', 'teacher_absent') AND hours_delivered = 0",
+        [prevRows[0].hdate]
+      );
+    }
+    await syncOffDaysForAllBatches();
     res.json({ message: 'Holiday deleted successfully' });
   } catch (err) {
     console.error('Holiday delete error:', err);
@@ -117,6 +139,7 @@ router.post('/import', requireAuth, async (req, res) => {
     }
 
     await connection.commit();
+    await syncOffDaysForAllBatches();
     res.json({ count: importedCount, message: `Imported ${importedCount} holidays successfully` });
   } catch (err) {
     await connection.rollback();

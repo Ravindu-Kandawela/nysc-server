@@ -1,17 +1,25 @@
 'use strict';
 const db = require('../db');
+const { getRangeMap: getTeacherAttendanceMap } = require('./teacherAttendanceService');
+const { syncOffDaysForBatch } = require('./schedulerService');
 
 /**
  * Ensures diary_entries and diary_lines exist for all taught dates in the period.
  * Pulls from plan_sessions, day_log, and attendance if missing.
  */
 async function syncDiariesForPeriod(batchId, from, to) {
-  // 1. Find all day_log records in range with taught hours > 0
+  // 0. Ensure all off-holidays and teacher_absent / institute_closed days are synced and shifted first
+  await syncOffDaysForBatch(batchId);
+
+  // 1. Find all day_log records in range with taught hours > 0 (excluding any off-holidays)
   const [taughtDays] = await db.query(`
-    SELECT ldate, status, hours_delivered, reason
-    FROM day_log
-    WHERE batch_id = ? AND ldate >= ? AND ldate <= ? AND status IN ('taught', 'partial', 'substitute', 'assessment_day')
-    ORDER BY ldate ASC
+    SELECT dl.ldate, dl.status, dl.hours_delivered, dl.reason
+    FROM day_log dl
+    LEFT JOIN holidays h ON h.hdate = dl.ldate AND h.is_off = 1
+    WHERE dl.batch_id = ? AND dl.ldate >= ? AND dl.ldate <= ?
+      AND dl.status IN ('taught', 'partial', 'substitute', 'assessment_day')
+      AND h.id IS NULL
+    ORDER BY dl.ldate ASC
   `, [batchId, from, to]);
 
   if (taughtDays.length === 0) return;
@@ -242,27 +250,46 @@ async function buildMonthlyReport(batchId, from, to) {
     remainingHours: Math.max(0, totalCurriculumHours - totalToDateHours)
   };
 
-  // Page 2: Daily Diary Table
+  // Page 2: Daily Diary Table (exclude any 0-hour or holiday/absent rows)
   const [diaryEntries] = await db.query(`
     SELECT de.*, 
       (SELECT status FROM day_log dl WHERE dl.batch_id = de.batch_id AND dl.ldate = de.ddate LIMIT 1) as day_log_status,
       (SELECT reason FROM day_log dl WHERE dl.batch_id = de.batch_id AND dl.ldate = de.ddate LIMIT 1) as day_log_reason
     FROM diary_entries de
+    LEFT JOIN holidays h ON h.hdate = de.ddate AND h.is_off = 1
+    LEFT JOIN day_log dl2 ON dl2.batch_id = de.batch_id AND dl2.ldate = de.ddate
     WHERE de.batch_id = ? AND de.ddate >= ? AND de.ddate <= ?
+      AND de.hours_delivered > 0
+      AND h.id IS NULL
+      AND (dl2.status IS NULL OR dl2.status NOT IN ('teacher_absent', 'institute_closed'))
     ORDER BY de.ddate ASC
   `, [batchId, from, to]);
 
-  const page2Rows = diaryEntries.map(e => ({
-    date: e.ddate,
-    course_name: settings.course_title || batch.name,
-    summary: e.summary_text || '',
-    activities: e.activities_text || 'න්‍යායාත්මක හා ප්‍රායෝගික ක්‍රියාකාරකම්',
-    time_text: e.time_text || '09:00 - 16:00',
-    hours: Number(e.hours_delivered) || 0,
-    status: e.status
-  }));
+  // Teacher's own In/Out attendance → "ගත කළ කාලය" and "ගතවූ පැය ගණන"
+  const teacherAtt = await getTeacherAttendanceMap(from, to);
 
-  const page2TotalHours = page2Rows.reduce((acc, r) => acc + r.hours, 0);
+  const page2Rows = diaryEntries.map(e => {
+    const att = teacherAtt[e.ddate];
+    const diaryHours = Number(e.hours_delivered) || 0;
+    // Hours: from In/Out time, capped at 6.5h (shows actual if less). Falls back to diary hours.
+    const attHours = att && att.counted_hours !== null ? att.counted_hours : null;
+    return {
+      date: e.ddate,
+      course_name: settings.course_title || batch.name,
+      summary: e.summary_text || '',
+      activities: e.activities_text || 'න්‍යායාත්මක හා ප්‍රායෝගික ක්‍රියාකාරකම්',
+      // Empty unless the teacher marked In/Out for this date (no more static 09:00 - 16:00)
+      time_text: att ? att.time_text : '',
+      time_in: att ? att.time_in : '',
+      time_out: att ? att.time_out : '',
+      hours: attHours !== null ? attHours : diaryHours,
+      diary_hours: diaryHours,
+      has_attendance: attHours !== null,
+      status: e.status
+    };
+  });
+
+  const page2TotalHours = Math.round(page2Rows.reduce((acc, r) => acc + r.hours, 0) * 10) / 10;
 
   // Check matching hours
   const hoursMatch = Math.abs(totalThisMonthHours - page2TotalHours) < 0.1;

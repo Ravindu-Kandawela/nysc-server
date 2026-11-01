@@ -42,6 +42,9 @@ router.put('/:date', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Status is required' });
     }
 
+    const isOffStatus = status === 'teacher_absent' || status === 'institute_closed';
+    const effectiveHours = isOffStatus ? 0 : (hours_delivered !== undefined ? hours_delivered : 0);
+
     await db.query(`
       INSERT INTO day_log (batch_id, ldate, status, reason, hours_delivered, substitute_name, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -51,7 +54,11 @@ router.put('/:date', requireAuth, async (req, res) => {
         hours_delivered = VALUES(hours_delivered),
         substitute_name = VALUES(substitute_name),
         notes = VALUES(notes)
-    `, [batchId, date, status, reason || null, hours_delivered !== undefined ? hours_delivered : 0, substitute_name || null, notes || null]);
+    `, [batchId, date, status, reason || null, effectiveHours, substitute_name || null, notes || null]);
+
+    if (isOffStatus) {
+      await schedulerService.syncOffDaysForBatch(batchId);
+    }
 
     res.json({ message: 'Day log updated successfully' });
   } catch (err) {
@@ -65,6 +72,9 @@ router.get('/unresolved-days', requireAuth, async (req, res) => {
   try {
     const batchId = req.params.id;
     const today = new Date().toISOString().slice(0, 10);
+
+    // Sync any holidays / off-days first so they are never flagged as unresolved
+    await schedulerService.syncOffDaysForBatch(batchId);
 
     // Get current plan sessions up to today
     const [sessions] = await db.query(`
@@ -96,8 +106,17 @@ router.get('/unresolved-days', requireAuth, async (req, res) => {
     );
     const attendedDates = new Set(attDates.map(d => d.adate));
 
-    // Unresolved = past planned date with NO day_log AND NO attendance
-    const unresolved = sessions.filter(s => !loggedDates.has(s.sdate) && !attendedDates.has(s.sdate));
+    // Get dates that are off-holidays
+    const [holDates] = await db.query(
+      'SELECT hdate FROM holidays WHERE is_off = 1 AND hdate <= ?',
+      [today]
+    );
+    const holidaySet = new Set(holDates.map(h => h.hdate));
+
+    // Unresolved = past planned date with NO day_log, NO attendance, and NOT an off-holiday
+    const unresolved = sessions.filter(
+      s => !loggedDates.has(s.sdate) && !attendedDates.has(s.sdate) && !holidaySet.has(s.sdate)
+    );
 
     res.json(unresolved);
   } catch (err) {
@@ -119,7 +138,13 @@ router.post('/unresolved-days/resolve-bulk', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Dates array is required' });
     }
 
+    const [holRows] = await connection.query('SELECT hdate FROM holidays WHERE is_off = 1');
+    const holidaySet = new Set(holRows.map(h => h.hdate));
+
     for (const date of dates) {
+      if (status === 'taught' && holidaySet.has(date)) {
+        continue; // Never bulk-mark an off-holiday as taught
+      }
       // Find planned hours from current plan
       const [pRows] = await connection.query(`
         SELECT COALESCE(SUM(hours), 0) as planned_hours
@@ -154,6 +179,9 @@ router.post('/unresolved-days/resolve-bulk', requireAuth, async (req, res) => {
     }
 
     await connection.commit();
+    if (status === 'teacher_absent' || status === 'institute_closed') {
+      await schedulerService.syncOffDaysForBatch(batchId);
+    }
     res.json({ message: `Resolved ${dates.length} days successfully` });
   } catch (err) {
     await connection.rollback();

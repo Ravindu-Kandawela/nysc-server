@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true });
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { syncOffDaysForBatch } = require('../services/schedulerService');
 
 // GET /api/batches/:id/attendance?date=YYYY-MM-DD
 router.get('/', requireAuth, async (req, res) => {
@@ -119,6 +120,8 @@ router.get('/summary', requireAuth, async (req, res) => {
     const batchId = req.params.id;
     const { from, to, month } = req.query;
 
+    await syncOffDaysForBatch(batchId);
+
     let dateFilter = '';
     const params = [batchId];
 
@@ -190,6 +193,8 @@ router.get('/monthly-grid', requireAuth, async (req, res) => {
     const [year, mon] = month.split('-').map(Number);
     const daysInMonth = new Date(year, mon, 0).getDate();
 
+    await syncOffDaysForBatch(batchId);
+
     // Students sorted
     const [students] = await db.query(
       'SELECT id, reg_no, full_name, sort_order FROM students WHERE batch_id = ? AND status = "active" ORDER BY sort_order ASC, id ASC',
@@ -207,20 +212,32 @@ router.get('/monthly-grid', requireAuth, async (req, res) => {
     // Build lookup: { student_id: { day_number: status } }
     const attMap = {};
     attRows.forEach(r => {
-      const day = new Date(r.adate).getDate();
+      const day = Number(String(r.adate).slice(8, 10));
       if (!attMap[r.student_id]) attMap[r.student_id] = {};
       attMap[r.student_id][day] = r.status;
     });
 
-    // Holidays for this month (where is_off = 1)
+    // Holidays for this month (where is_off = 1) + day_log closures/absences
     const [holidays] = await db.query(
       'SELECT hdate, name, type, is_off FROM holidays WHERE hdate >= ? AND hdate <= ?',
       [startDate, endDate]
     );
+    const [offLogs] = await db.query(
+      "SELECT ldate, status, reason FROM day_log WHERE batch_id = ? AND ldate >= ? AND ldate <= ? AND status IN ('teacher_absent', 'institute_closed')",
+      [batchId, startDate, endDate]
+    );
 
     const holidayMap = {};
+    offLogs.forEach(d => {
+      const day = Number(String(d.ldate).slice(8, 10));
+      holidayMap[day] = {
+        name: d.reason || (d.status === 'teacher_absent' ? 'Instructor Absent' : 'Institute Closed'),
+        type: d.status,
+        is_off: 1
+      };
+    });
     holidays.forEach(h => {
-      const day = new Date(h.hdate).getDate();
+      const day = Number(String(h.hdate).slice(8, 10));
       holidayMap[day] = { name: h.name, type: h.type, is_off: h.is_off };
     });
 

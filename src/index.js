@@ -20,6 +20,7 @@ const assignmentsRouter = require('./routes/assignments');
 const reportsRouter = require('./routes/reports');
 const printRouter = require('./routes/print');
 const autoSmsRouter = require('./routes/autoSms');
+const teacherAttendanceRouter = require('./routes/teacherAttendance');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -65,6 +66,9 @@ app.use('/api/batches/:id/checklists', checklistsRouter);
 
 // Holidays
 app.use('/api/holidays', holidaysRouter);
+
+// Teacher (instructor) own In/Out attendance
+app.use('/api/teacher-attendance', teacherAttendanceRouter);
 
 // Assignments & student public endpoints
 app.use('/api', assignmentsRouter);

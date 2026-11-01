@@ -378,6 +378,7 @@ router.post('/replan/confirm', requireAuth, async (req, res) => {
     }
 
     await connection.commit();
+    await schedulerService.syncOffDaysForBatch(batchId);
     res.json({
       message: `Re-planned to version ${nextVerNo}`,
       newVersionNo: nextVerNo,

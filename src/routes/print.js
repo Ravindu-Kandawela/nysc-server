@@ -144,6 +144,9 @@ async function getMonthlyCalendarData(batchId, targetYear, targetMonth) {
   if (batchRows.length === 0) throw new Error('Batch not found');
   const batch = batchRows[0];
 
+  const { syncOffDaysForBatch } = require('../services/schedulerService');
+  await syncOffDaysForBatch(batchId);
+
   const [settingsRows] = await db.query('SELECT k, v FROM settings');
   const settings = {};
   settingsRows.forEach(r => { settings[r.k] = r.v; });
@@ -207,9 +210,12 @@ async function getMonthlyCalendarData(batchId, targetYear, targetMonth) {
         } else {
           const hol = holMap[ymd];
           const dl = dlMap[ymd];
-          const sList = sessMap[ymd] || [];
+          const isClosure = !!(dl && ['teacher_absent', 'institute_closed', 'leave', 'holiday', 'centre_closed'].includes(dl.status));
+          const sList = (hol || isClosure) ? [] : (sessMap[ymd] || []);
           const isBeforeStart = ymd < batch.start_date;
-          const dayHours = sList.reduce((acc, s) => acc + Number(s.hours), 0) || (dl && Number(dl.hours_delivered)) || 0;
+          const dayHours = (hol || isClosure)
+            ? 0
+            : (sList.reduce((acc, s) => acc + Number(s.hours), 0) || (dl && Number(dl.hours_delivered)) || 0);
           if (dayHours > 0) {
             totalHours += dayHours;
             teachingDays++;
@@ -234,8 +240,8 @@ async function getMonthlyCalendarData(batchId, targetYear, targetMonth) {
             isBeforeStart,
             isHoliday: !!hol,
             holidayName: hol ? hol.name : '',
-            isClosure: dl && ['leave', 'holiday', 'centre_closed'].includes(dl.status),
-            closureReason: dl ? dl.reason : '',
+            isClosure,
+            closureReason: dl ? (dl.reason || (dl.status === 'teacher_absent' ? 'Instructor Absent' : 'Centre Closed')) : '',
             hours: dayHours,
             contentHtml
           });

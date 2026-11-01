@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { buildMonthlyReport } = require('../services/reportService');
+const { syncOffDaysForBatch } = require('../services/schedulerService');
 
 // GET /api/reports/hours?batchId=
 router.get('/hours', requireAuth, async (req, res) => {
@@ -63,6 +64,8 @@ router.get('/periods', requireAuth, async (req, res) => {
     const [batches] = await db.query('SELECT * FROM batches WHERE id = ?', [batchId]);
     if (batches.length === 0) return res.status(404).json({ error: 'Batch not found' });
     const batch = batches[0];
+
+    await syncOffDaysForBatch(batchId);
 
     const periods = [];
     const targetHours = batch.target_hours_per_month || 120;

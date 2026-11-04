@@ -6,40 +6,35 @@ const { requireAuth } = require('../middleware/auth');
 
 /**
  * Helper: Given a student's sorted array of Present ('P'/'L') dates and a task's planned dates,
- * pick the Lesson Plan date if the student was Present, or the closest Present day if Absent.
+ * pick the Lesson Plan date if the student was Present on that date,
+ * or strictly the closest Present day AFTER the planned date when the student next arrived.
+ * Never picks a date before the planned date.
  */
 function pickAssessmentDateForStudent(presentDatesSorted, presentSet, planDates, strategy = 'plan_end') {
   if (!planDates || planDates.length === 0) {
     return { date: null, reason: 'no_plan_date', absentOnPlanDate: false };
   }
 
-  const orderedPlanDates = strategy === 'plan_start'
-    ? [...planDates]
-    : [...planDates].reverse();
+  const primaryPlanDate = strategy === 'plan_start'
+    ? planDates[0]
+    : planDates[planDates.length - 1];
 
-  const primaryPlanDate = orderedPlanDates[0];
-
-  // 1. Check if student was present on primary plan date or any other planned session date for this task
-  for (const pd of orderedPlanDates) {
-    if (presentSet.has(pd)) {
-      return {
-        date: pd,
-        primaryPlanDate,
-        reason: pd === primaryPlanDate ? 'plan_date' : 'plan_span_date',
-        absentOnPlanDate: false
-      };
-    }
+  // 1. Check if student was present on the task's planned assessment date
+  if (presentSet.has(primaryPlanDate)) {
+    return {
+      date: primaryPlanDate,
+      primaryPlanDate,
+      reason: 'plan_date',
+      absentOnPlanDate: false
+    };
   }
 
-  // 2. Student was Absent on the task's lesson plan date(s) -> pick closest Present day
-  // Prefer the closest Present day on or after plan_start (when the task started being taught);
-  // if the student has no present day after plan_start yet, pick the closest Present day before plan_start.
+  // 2. Student was Absent on the planned date -> strictly pick the closest Present day AFTER primaryPlanDate
   if (!presentDatesSorted || presentDatesSorted.length === 0) {
     return { date: null, primaryPlanDate, reason: 'no_present_attendance', absentOnPlanDate: true };
   }
 
-  const planStart = planDates[0];
-  const afterDates = presentDatesSorted.filter(d => d >= planStart);
+  const afterDates = presentDatesSorted.filter(d => d > primaryPlanDate);
   if (afterDates.length > 0) {
     return {
       date: afterDates[0],
@@ -49,18 +44,8 @@ function pickAssessmentDateForStudent(presentDatesSorted, presentSet, planDates,
     };
   }
 
-  // Fallback: closest present date before plan_start
-  const beforeDates = presentDatesSorted.filter(d => d < planStart);
-  if (beforeDates.length > 0) {
-    return {
-      date: beforeDates[beforeDates.length - 1],
-      primaryPlanDate,
-      reason: 'closest_present_before',
-      absentOnPlanDate: true
-    };
-  }
-
-  return { date: null, primaryPlanDate, reason: 'no_present_attendance', absentOnPlanDate: true };
+  // Student has not yet attended any day after primaryPlanDate (never assign a date before primaryPlanDate)
+  return { date: null, primaryPlanDate, reason: 'no_present_after_plan_date', absentOnPlanDate: true };
 }
 
 // GET /api/batches/:id/checklists/progress/summary
@@ -408,22 +393,27 @@ router.post('/auto-fill', requireAuth, async (req, res) => {
     }
 
     for (const task of targetTasks) {
-      let planDates = task.plan_dates_csv ? task.plan_dates_csv.split(',') : [];
-      const manualTaskDates = [...new Set(manualDatesByTask[task.task_id] || [])].sort();
-      if (strategy === 'manual_or_plan_end' && manualTaskDates.length > 0) {
-        // Put the teacher's custom manual date(s) for this task first so remaining students match the same date if Present
-        planDates = [...new Set([...planDates, ...manualTaskDates.reverse()])];
-      }
+      const planDates = task.plan_dates_csv ? task.plan_dates_csv.split(',') : [];
       const taskSteps = stepsByTask[task.task_id] || [];
       if (planDates.length === 0 || taskSteps.length === 0) continue;
+
+      const primaryPlanDate = strategy === 'plan_start'
+        ? planDates[0]
+        : planDates[planDates.length - 1];
 
       for (const st of students) {
         const key = `${task.task_id}_${st.id}`;
         const existingComp = existingCompMap[key];
         const existingStep = existingStepMap[key];
+        const existingDate = existingComp?.competent_date || existingStep?.min_date || null;
 
-        // STRICT RULE: If student already has manual competency or manual achieved steps on this task, DO NOT touch them!
-        if (existingComp || (existingStep && existingStep.achieved_steps > 0)) {
+        // Preserve existing valid manual record ONLY if its date is >= primaryPlanDate and student was Present on that date.
+        // If an earlier auto-fill set a date BEFORE primaryPlanDate or on an absent/off day, recalculate and fix it!
+        const isInvalidBeforeOrAbsent = existingDate && (
+          existingDate < primaryPlanDate || !presentSetByStudent[st.id]?.has(existingDate)
+        );
+
+        if ((existingComp || (existingStep && existingStep.achieved_steps > 0)) && !isInvalidBeforeOrAbsent) {
           existingPreservedCount++;
           items.push({
             task_id: task.task_id,
@@ -434,8 +424,8 @@ router.post('/auto-fill', requireAuth, async (req, res) => {
             reg_no: st.reg_no,
             full_name: st.full_name,
             action: 'preserved_manual',
-            chosen_date: existingComp?.competent_date || existingStep?.min_date || null,
-            plan_date: strategy === 'plan_start' ? task.plan_start : task.plan_end,
+            chosen_date: existingDate,
+            plan_date: primaryPlanDate,
             reason: 'manual_existing'
           });
           continue;
@@ -488,16 +478,18 @@ router.post('/auto-fill', requireAuth, async (req, res) => {
         });
 
         if (!preview) {
-          // Insert checklist_results for all steps of this task (Attempt 1 = achieved on chosen_date)
+          // Insert or update checklist_results for all steps of this task (Attempt 1 = achieved on chosen_date)
           const stepValues = taskSteps.map(stp => [st.id, stp.id, 1, 1, picked.date]);
           await connection.query(
-            `INSERT IGNORE INTO checklist_results (student_id, step_id, attempt, achieved, assessed_on) VALUES ?`,
+            `INSERT INTO checklist_results (student_id, step_id, attempt, achieved, assessed_on) VALUES ?
+             ON DUPLICATE KEY UPDATE achieved = VALUES(achieved), assessed_on = VALUES(assessed_on)`,
             [stepValues]
           );
 
-          // Insert task_competency without overwriting any existing competency
+          // Insert or update task_competency with the verified chosen_date
           await connection.query(
-            `INSERT IGNORE INTO task_competency (student_id, task_id, competent, competent_date) VALUES (?, ?, 1, ?)`,
+            `INSERT INTO task_competency (student_id, task_id, competent, competent_date) VALUES (?, ?, 1, ?)
+             ON DUPLICATE KEY UPDATE competent = VALUES(competent), competent_date = VALUES(competent_date)`,
             [st.id, task.task_id, picked.date]
           );
         }
@@ -636,7 +628,11 @@ router.get('/:taskId', requireAuth, async (req, res) => {
 
     // 7. Suggested assessment date per student based on Lesson Plan + Student Attendance
     const suggestedDates = {};
-    if (planInfo.plan_dates.length > 0) {
+    const targetPlanDates = req.query.date
+      ? [req.query.date]
+      : (planInfo.plan_dates.length > 0 ? planInfo.plan_dates : [assessmentDate]);
+
+    if (targetPlanDates.length > 0) {
       const [allPresentRows] = await db.query(
         `SELECT student_id, adate FROM attendance WHERE batch_id = ? AND status IN ('P', 'L') ORDER BY adate ASC`,
         [batchId]
@@ -658,7 +654,7 @@ router.get('/:taskId', requireAuth, async (req, res) => {
         suggestedDates[s.id] = pickAssessmentDateForStudent(
           presentByStudent[s.id],
           presentSetByStudent[s.id],
-          planInfo.plan_dates,
+          targetPlanDates,
           'plan_end'
         );
       });

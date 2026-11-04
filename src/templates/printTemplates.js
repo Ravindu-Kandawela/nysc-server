@@ -423,16 +423,17 @@ function renderChecklist({
   </section>`;
   };
 
+  // 20mm left gutter for standard 2-hole / file-binder punching on both Legal and A4
   const pageSizeCss = isLegal
-    ? '@page { size: 355.6mm 215.9mm; margin: 7mm 8mm 6mm 8mm; }'
-    : '@page { size: A4 landscape; margin: 9mm 11mm 7mm 11mm; }';
+    ? '@page { size: 355.6mm 215.9mm; margin: 9mm 10mm 7mm 20mm; }'
+    : '@page { size: A4 landscape; margin: 9mm 10mm 7mm 18mm; }';
 
   const screenSheetCss = isLegal
-    ? '.sheet { width: 355.6mm; height: 215.9mm; padding: 7mm 8mm 6mm; overflow: hidden; }'
-    : '.sheet { width: 297mm; height: 210mm; padding: 9mm 11mm 7mm; overflow: hidden; }';
+    ? '.sheet { width: 355.6mm; height: 215.9mm; padding: 9mm 10mm 7mm 20mm; overflow: hidden; }'
+    : '.sheet { width: 297mm; height: 210mm; padding: 9mm 10mm 7mm 18mm; overflow: hidden; }';
 
-  const fitWidthMm = isLegal ? 339.6 : 275;
-  const availHeightMm = isLegal ? 202 : 194;
+  const fitWidthMm = isLegal ? 325.6 : 269;
+  const availHeightMm = isLegal ? 199 : 194;
 
   const customToolbar = `
   <div class="no-print no-print-bar">
@@ -470,7 +471,7 @@ function renderChecklist({
     .taskno { padding-right: 31mm; }
     .task-title { text-align: right; font-size: 11pt; margin: -3mm 6mm 3.5mm 0; }
 
-    table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-left: ${denseCols ? '0' : '4mm'}; width: ${denseCols ? '100%' : 'calc(100% - 4mm)'}; }
+    table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-left: ${denseCols ? '0' : '2mm'}; width: ${denseCols ? '100%' : 'calc(100% - 2mm)'}; }
     .grid th, .grid td { border: 0.75pt solid #555; padding: 0; }
     .grid thead { display: table-header-group; }
     .grid tr { break-inside: avoid; }

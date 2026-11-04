@@ -1250,11 +1250,420 @@ function renderMonthlyCalendarPlan({
 </html>`;
 }
 
+// =====================================================================
+// MASTER TRAINING WORK PLAN (GANTT CHART) — NVQ LEVEL 4
+// Supports A4 Landscape and Legal Landscape with 20mm Left Punch Gutter
+// =====================================================================
+function renderWorkPlan({
+  batch = {},
+  settings = {},
+  version = null,
+  weeklyHours = 30,
+  modules = [],
+  gantt = { months: [], weeks: [] },
+  totals = {},
+  paperSize = 'a4',
+  a4Href = '#',
+  legalHref = '#',
+  pdfHref = '#'
+}) {
+  const isLegal = String(paperSize).toLowerCase() === 'legal';
+  const pageWidthMm = isLegal ? '355.6mm' : '297mm';
+  const pageHeightMm = isLegal ? '215.9mm' : '210mm';
+
+  const courseName = settings.course_title || 'Information & Communication Technology Technician (ICTT - NVQ Level 4)';
+  const teacherName = settings.teacher_name || 'R.Kandawela';
+  const teacherDesig = settings.teacher_designation || 'Computer Instructor';
+  const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
+  const approverTitle = settings.center_in_charge_title || DEFAULT_APPROVER_TITLE;
+  const centreSi = settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
+
+  const months = gantt.months || [];
+  const weeks = gantt.weeks || [];
+
+  const shortDate = (ymd) => {
+    if (!ymd) return '-';
+    const [y, m, d] = String(ymd).slice(0, 10).split('-');
+    return `${y.slice(2)}.${m}.${d}`;
+  };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Master Work Plan (Gantt Chart) — ${esc(batch.name)} (${isLegal ? 'Legal' : 'A4'})</title>
+  <style>
+    /* 20mm left binding/punch gutter */
+    @page {
+      size: ${isLegal ? 'legal landscape' : 'A4 landscape'};
+      margin: 8mm 8mm 8mm 20mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      margin: 0;
+      padding: 0;
+      color: #0f172a;
+      font-family: 'Segoe UI', 'Iskoola Pota', 'Nirmala UI', Arial, sans-serif;
+      font-size: ${isLegal ? '7.8pt' : '7pt'};
+    }
+    ${TOOLBAR_CSS}
+    .sheet {
+      width: 100%;
+    }
+    @media screen {
+      .sheet {
+        width: ${pageWidthMm};
+        min-height: ${pageHeightMm};
+        padding: 8mm 8mm 8mm 20mm;
+      }
+    }
+
+    .wp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 5px;
+      margin-bottom: 6px;
+    }
+    .wp-title-block h1 {
+      margin: 0;
+      font-size: ${isLegal ? '12.5pt' : '11.5pt'};
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: 0.3px;
+    }
+    .wp-title-block h2 {
+      margin: 1px 0 0;
+      font-size: ${isLegal ? '9.5pt' : '8.8pt'};
+      font-weight: 700;
+      color: #1e3a8a;
+    }
+    .wp-title-block p {
+      margin: 1px 0 0;
+      font-size: 7.5pt;
+      color: #475569;
+      font-weight: 600;
+    }
+
+    .wp-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 3px 14px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
+    }
+    .wp-meta-grid div strong {
+      color: #0f172a;
+    }
+
+    .gantt-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin-top: 4px;
+    }
+    .gantt-table th, .gantt-table td {
+      border: 0.6pt solid #475569;
+      padding: ${isLegal ? '2.5px 3px' : '2px 2px'};
+      vertical-align: middle;
+      overflow: hidden;
+    }
+    .gantt-table thead th {
+      background: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: center;
+      font-size: ${isLegal ? '7pt' : '6.3pt'};
+      line-height: 1.15;
+    }
+    .gantt-table thead tr.month-row th.month-hdr {
+      background: #1e293b;
+      color: #ffffff;
+      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
+      letter-spacing: 0.3px;
+      padding: 2.5px 2px;
+    }
+    .gantt-table thead tr.week-row th.wk-hdr {
+      background: #e2e8f0;
+      font-size: ${isLegal ? '6.2pt' : '5.6pt'};
+      padding: 1.5px 1px;
+    }
+    .wk-dates {
+      display: block;
+      font-size: ${isLegal ? '5.2pt' : '4.7pt'};
+      font-weight: 600;
+      color: #475569;
+      white-space: nowrap;
+    }
+
+    .col-no { width: 5.5mm; text-align: center; font-weight: 700; }
+    .col-code { width: ${isLegal ? '12mm' : '10.5mm'}; text-align: center; font-weight: 800; }
+    .col-title { width: ${isLegal ? '58mm' : '46mm'}; text-align: left; }
+    .col-hrs { width: ${isLegal ? '15mm' : '13.5mm'}; text-align: center; font-size: ${isLegal ? '6.6pt' : '6pt'}; }
+    .col-done { width: ${isLegal ? '10mm' : '9mm'}; text-align: center; font-weight: 700; }
+    .col-dates { width: ${isLegal ? '22mm' : '19.5mm'}; text-align: center; font-size: ${isLegal ? '6.2pt' : '5.6pt'}; white-space: nowrap; }
+    .col-days { width: ${isLegal ? '7.5mm' : '6.5mm'}; text-align: center; font-weight: 700; }
+
+    .mod-title-main {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: ${isLegal ? '7.3pt' : '6.6pt'};
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mod-sub-meta {
+      font-size: ${isLegal ? '5.8pt' : '5.3pt'};
+      color: #475569;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .g-cell {
+      padding: 1px !important;
+      text-align: center;
+      position: relative;
+      height: ${isLegal ? '7.4mm' : '6.8mm'};
+    }
+    .g-cell.month-start {
+      border-left: 1.1pt solid #1e293b;
+    }
+    .g-bar {
+      width: 100%;
+      height: 100%;
+      min-height: ${isLegal ? '5.6mm' : '5mm'};
+      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: ${isLegal ? '6pt' : '5.3pt'};
+      font-weight: 800;
+      line-height: 1;
+    }
+    .g-bar-done {
+      background: #10b981;
+      color: #ffffff;
+      border: 0.5pt solid #047857;
+    }
+    .g-bar-partial {
+      background: linear-gradient(90deg, #10b981 55%, #3b82f6 55%);
+      color: #ffffff;
+      border: 0.5pt solid #1d4ed8;
+    }
+    .g-bar-planned {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 0.5pt solid #3b82f6;
+    }
+
+    .tot-row td {
+      background: #f1f5f9;
+      font-weight: 800;
+      font-size: ${isLegal ? '6.6pt' : '6pt'};
+      text-align: center;
+    }
+
+    .wp-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 6px;
+      padding-top: 4px;
+      border-top: 1px solid #94a3b8;
+      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
+    }
+    .legend-items {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+    }
+    .lg-box {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .sig-row {
+      display: flex;
+      gap: 28mm;
+    }
+    .sig-block {
+      min-width: 52mm;
+    }
+    .sig-line {
+      border-bottom: 1px dotted #0f172a;
+      height: 14px;
+      margin-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print no-print-bar">
+    <div>
+      <strong>📊 Master Work Plan (Gantt Chart) — ${esc(batch.name)}</strong>
+      <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#93c5fd;">
+        ${isLegal ? '📏 Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : '📄 A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;">
+      <a href="${a4Href}" class="btn ${!isLegal ? '' : 'btn-secondary'}" style="${!isLegal ? 'background:#059669;' : ''}">
+        📄 A4 Landscape
+      </a>
+      <a href="${legalHref}" class="btn ${isLegal ? '' : 'btn-secondary'}" style="${isLegal ? 'background:#059669;' : ''}">
+        📏 Legal Landscape
+      </a>
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+      <a href="${pdfHref}" class="btn">⬇️ Download PDF</a>
+    </div>
+  </div>
+
+  <section class="sheet">
+    <div class="wp-header">
+      <div class="wp-title-block">
+        <h1>MASTER TRAINING WORK PLAN &amp; GANTT CHART (පුහුණු ක්‍රියාකාරී සැලැස්ම)</h1>
+        <h2>ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)}</h2>
+        <p>${esc(courseName)} · NCS: ${esc(batch.ncs_code || 'K72S002')} · Synced with Lesson Plan &amp; Timetable${version ? ` (Plan v${version.version_no})` : ''}</p>
+      </div>
+
+      <div class="wp-meta-grid">
+        <div><strong>Batch:</strong> ${esc(batch.name)}</div>
+        <div><strong>Start Date:</strong> ${esc(totals.startDate || batch.start_date)}</div>
+        <div><strong>Target Hrs:</strong> ${fmtHours(totals.curriculumHours || 720)}h (${fmtHours(weeklyHours)}h/wk)</div>
+        <div><strong>Delivered:</strong> ${fmtHours(totals.delivered || 0)} / ${fmtHours(totals.planned || 720)}h</div>
+        <div><strong>Instructor:</strong> ${esc(teacherName)}</div>
+        <div><strong>End Date:</strong> ${esc(totals.endDate || '-')}</div>
+        <div><strong>Teaching Days:</strong> ${totals.teachingDays || 0} Days</div>
+        <div><strong>Weeks Span:</strong> ${weeks.length} Weeks</div>
+      </div>
+    </div>
+
+    <table class="gantt-table">
+      <thead>
+        <tr class="month-row">
+          <th rowspan="2" class="col-no">#</th>
+          <th rowspan="2" class="col-code">Code</th>
+          <th rowspan="2" class="col-title">Module / Competency Unit &amp; Tasks</th>
+          <th rowspan="2" class="col-hrs">Hours<br><span style="font-weight:normal;font-size:5.5pt;">(T+P=Tot)</span></th>
+          <th rowspan="2" class="col-done">Done<br><span style="font-weight:normal;font-size:5.5pt;">(Hrs)</span></th>
+          <th rowspan="2" class="col-dates">Schedule Dates<br><span style="font-weight:normal;font-size:5.5pt;">(Start – End)</span></th>
+          <th rowspan="2" class="col-days">Days</th>
+          ${months.map(m => `
+            <th colspan="${m.weeksCount}" class="month-hdr">
+              ${esc(m.label)} (${fmtHours(m.plannedHours)}h)
+            </th>
+          `).join('')}
+        </tr>
+        <tr class="week-row">
+          ${weeks.map(w => `
+            <th class="wk-hdr" title="Week ${w.weekNo}: ${w.monday} to ${w.friday} (${w.plannedHours}h)">
+              W${w.weekInMonth}
+              <span class="wk-dates">${esc(w.monday.slice(8, 10))}–${esc(w.friday.slice(8, 10))}</span>
+            </th>
+          `).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${modules.map((m, idx) => {
+          const taskList = (m.tasks || []).map(t => t.code).join(', ');
+          return `
+            <tr>
+              <td class="col-no">${idx + 1}</td>
+              <td class="col-code">${esc(m.code)}</td>
+              <td class="col-title">
+                <div class="mod-title-main">${esc(m.unit_title || m.title)}</div>
+                <div class="mod-sub-meta">
+                  ${taskList ? `Tasks: ${esc(taskList)} · ` : ''}${(m.sessions || []).length} Sessions
+                </div>
+              </td>
+              <td class="col-hrs">
+                <span style="color:#475569;">${fmtHours(m.theory_hours)}+${fmtHours(m.practical_hours)}=</span><strong>${fmtHours(m.total_hours)}h</strong>
+              </td>
+              <td class="col-done" style="color:${m.deliveredHours >= m.plannedHours && m.plannedHours > 0 ? '#047857' : m.deliveredHours > 0 ? '#b45309' : '#64748b'};">
+                ${fmtHours(m.deliveredHours)}h
+              </td>
+              <td class="col-dates">
+                ${shortDate(m.firstDate)} – ${shortDate(m.lastDate)}
+              </td>
+              <td class="col-days">${m.days || 0}</td>
+              ${weeks.map(w => {
+                const cell = m.weeklyHours && m.weeklyHours[w.weekNo];
+                const isMonthStart = w.weekInMonth === 1;
+                if (!cell || !cell.planned) {
+                  return `<td class="g-cell ${isMonthStart ? 'month-start' : ''}"></td>`;
+                }
+                const isDone = cell.delivered >= cell.planned && cell.planned > 0;
+                const isPartial = !isDone && cell.delivered > 0;
+                const barCls = isDone ? 'g-bar-done' : isPartial ? 'g-bar-partial' : 'g-bar-planned';
+                return `
+                  <td class="g-cell ${isMonthStart ? 'month-start' : ''}">
+                    <div class="g-bar ${barCls}" title="${m.code} · Week ${w.weekNo} (${w.monday} to ${w.friday}): ${cell.delivered}/${cell.planned}h">
+                      ${fmtHours(cell.planned)}h
+                    </div>
+                  </td>
+                `;
+              }).join('')}
+            </tr>
+          `;
+        }).join('')}
+        <tr class="tot-row">
+          <td colspan="3" style="text-align:right;padding-right:6px;">TOTAL SCHEDULED CURRICULUM HOURS &amp; WEEKLY BREAKDOWN:</td>
+          <td>${fmtHours(totals.curriculumHours || 720)}h</td>
+          <td style="color:#047857;">${fmtHours(totals.delivered || 0)}h</td>
+          <td>${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}</td>
+          <td>${totals.teachingDays || 0}</td>
+          ${weeks.map(w => `
+            <td style="font-size:${isLegal ? '5.8pt' : '5.2pt'};padding:1px;">
+              ${w.plannedHours ? `${fmtHours(w.plannedHours)}` : '-'}
+            </td>
+          `).join('')}
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="wp-footer">
+      <div>
+        <div class="legend-items">
+          <span><span class="lg-box" style="background:#10b981;border:1px solid #047857;"></span>Completed / Taught Week</span>
+          <span><span class="lg-box" style="background:linear-gradient(90deg,#10b981 50%,#3b82f6 50%);border:1px solid #1d4ed8;"></span>In Progress (Partial)</span>
+          <span><span class="lg-box" style="background:#dbeafe;border:1px solid #3b82f6;"></span>Planned Schedule (Synced with Timetable &amp; Holidays)</span>
+        </div>
+        <div style="margin-top:3px;color:#475569;font-size:6.5pt;">
+          Note: All module dates, task sequences, and weekly hour allocations automatically synchronize with the Master Lesson Plan and Holiday Calendar.
+        </div>
+      </div>
+
+      <div class="sig-row">
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div><strong>Prepared by:</strong> ${esc(teacherName)} (${esc(teacherDesig)})</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div><strong>Approved by:</strong> ${esc(approverName)} (${esc(approverTitle)})</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>`;
+}
+
 module.exports = {
   renderMonthlyReport,
   renderChecklist,
   renderLessonPlan,
   renderMonthlyCalendarPlan,
+  renderWorkPlan,
   paginateStudents,
   splitName,
   SI_MONTHS

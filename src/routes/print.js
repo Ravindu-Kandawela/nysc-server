@@ -5,7 +5,7 @@ const db = require('../db');
 const { optionalAuth } = require('../middleware/auth');
 const { buildMonthlyReport } = require('../services/reportService');
 const { htmlToPdf } = require('../services/pdfService');
-const { renderMonthlyReport, renderChecklist, renderLessonPlan, renderMonthlyCalendarPlan } = require('../templates/printTemplates');
+const { renderMonthlyReport, renderChecklist, renderLessonPlan, renderMonthlyCalendarPlan, renderWorkPlan } = require('../templates/printTemplates');
 const lessonPlanService = require('../services/lessonPlanService');
 
 /** Keep the auth token on the "Download PDF" link inside the preview */
@@ -652,6 +652,38 @@ router.get('/lesson-plan', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('Print lesson plan error:', err);
     res.status(500).send('Failed to generate lesson plan document');
+  }
+});
+
+// -------------------------------------------------------------
+// 5. OFFICIAL MASTER TRAINING WORK PLAN (GANTT CHART)
+//    Synchronized with Lesson Plan, Timetable & Holiday Calendar
+// GET /api/print/work-plan?batchId=&paperSize=a4|legal&format=html|pdf
+// -------------------------------------------------------------
+router.get('/work-plan', optionalAuth, async (req, res) => {
+  try {
+    const { batchId, format = 'html', paperSize: rawPaperSize = 'a4' } = req.query;
+    if (!batchId) return res.status(400).send('batchId is required');
+
+    const paperSize = String(rawPaperSize).toLowerCase() === 'legal' ? 'legal' : 'a4';
+    const data = await lessonPlanService.buildLessonPlan(batchId);
+
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
+    const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+
+    const html = renderWorkPlan({
+      ...data,
+      paperSize,
+      a4Href,
+      legalHref,
+      pdfHref: pdfLink(req)
+    });
+    return sendHtmlOrPdf(res, html, format, `nysc_work_plan_gantt_${batchId}_${paperSize}.pdf`);
+  } catch (err) {
+    console.error('Print work plan error:', err);
+    res.status(500).send('Failed to generate work plan Gantt document');
   }
 });
 

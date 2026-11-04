@@ -147,8 +147,27 @@ async function getSettings() {
 const fmtTime = (t) => (t ? String(t).slice(0, 5) : null);
 
 /**
- * Build the full lesson plan for a batch.
- * opts: { from, to } — limits the day-by-day list only; module mapping always uses the full plan.
+ * Helper: Get the Monday YYYY-MM-DD of any YYYY-MM-DD date string
+ */
+function getMondayYmd(ymd) {
+  const dt = new Date(ymd + 'T00:00:00Z');
+  const dow = dt.getUTCDay(); // 0=Sun, 1=Mon, ...
+  const diff = dow === 0 ? -6 : 1 - dow;
+  dt.setUTCDate(dt.getUTCDate() + diff);
+  return dt.toISOString().slice(0, 10);
+}
+
+function addDaysYmd(ymd, days) {
+  const dt = new Date(ymd + 'T00:00:00Z');
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+const MONTH_SHORT_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Build the full lesson plan & synchronized Work Plan (Gantt Chart) for a batch.
+ * opts: { from, to } — limits the day-by-day list only; module & Gantt mapping always uses the full plan.
  */
 async function buildLessonPlan(batchId, opts = {}) {
   const { from, to } = opts;
@@ -158,6 +177,14 @@ async function buildLessonPlan(batchId, opts = {}) {
   `, [batchId]);
   if (!batchRows.length) throw new Error('Batch not found');
   const batch = batchRows[0];
+
+  // Keep Lesson Plan, Timetable & Work Plan Gantt 100% synced with custom holidays & off-days
+  try {
+    const { syncOffDaysForBatch } = require('./schedulerService');
+    await syncOffDaysForBatch(batchId);
+  } catch (syncErr) {
+    console.warn('syncOffDaysForBatch warning inside buildLessonPlan:', syncErr.message);
+  }
 
   const settings = await getSettings();
   const content = await getContentMap();
@@ -199,13 +226,75 @@ async function buildLessonPlan(batchId, opts = {}) {
   const dayLog = {};
   dayLogRows.forEach(d => { dayLog[d.ldate] = d; });
 
-  // ── Modules with lesson-session hour ranges ──
+  // ── Build Gantt Timeline Weeks (Monday to Friday) across the entire course ──
+  const weekMap = new Map();
+  if (planRows.length > 0) {
+    const firstMon = getMondayYmd(planRows[0].sdate);
+    const lastMon = getMondayYmd(planRows[planRows.length - 1].sdate);
+    let curMon = firstMon;
+    let wIdx = 1;
+    while (curMon <= lastMon) {
+      const fri = addDaysYmd(curMon, 4);
+      // Assign week to the month of its Wednesday (mid-week) so weeks group cleanly into months
+      const wed = addDaysYmd(curMon, 2);
+      const [wy, wm] = wed.split('-').map(Number);
+      const monthKey = `${wy}-${String(wm).padStart(2, '0')}`;
+      const monthLabel = `${MONTH_SHORT_EN[wm - 1]} ${wy}`;
+      weekMap.set(curMon, {
+        weekNo: wIdx++,
+        monday: curMon,
+        friday: fri,
+        monthKey,
+        monthLabel,
+        monthShort: MONTH_SHORT_EN[wm - 1],
+        year: wy,
+        weekInMonth: 0,
+        label: `${curMon.slice(8, 10)}–${fri.slice(8, 10)}`,
+        plannedHours: 0,
+        deliveredHours: 0,
+        teachingDays: 0
+      });
+      curMon = addDaysYmd(curMon, 7);
+    }
+  }
+
+  const ganttWeeks = Array.from(weekMap.values());
+  const ganttMonths = [];
+  let curMonthObj = null;
+  for (const w of ganttWeeks) {
+    if (!curMonthObj || curMonthObj.monthKey !== w.monthKey) {
+      curMonthObj = {
+        monthKey: w.monthKey,
+        label: w.monthLabel,
+        shortLabel: w.monthShort,
+        year: w.year,
+        weeksCount: 0,
+        plannedHours: 0,
+        deliveredHours: 0
+      };
+      ganttMonths.push(curMonthObj);
+    }
+    curMonthObj.weeksCount++;
+    w.weekInMonth = curMonthObj.weeksCount;
+  }
+
+  // ── Modules with lesson-session hour ranges & task / weekly Gantt buckets ──
   const modules = modRows.map(m => {
     const c = content[m.module_id] || { unit_title: '', goal: '', resources: [], assessment: [], sessions: [] };
     const total = Number(m.theory_hours) + Number(m.practical_hours);
     let cum = 0;
     const sessions = c.sessions.map(s => {
-      const r = { ...s, rangeStart: cum, rangeEnd: cum + s.hours, plannedHours: 0, deliveredHours: 0, firstDate: null, lastDate: null, days: 0 };
+      const r = {
+        ...s,
+        rangeStart: cum,
+        rangeEnd: cum + s.hours,
+        plannedHours: 0,
+        deliveredHours: 0,
+        firstDate: null,
+        lastDate: null,
+        days: 0,
+        weeklyHours: {}
+      };
       cum += s.hours;
       return r;
     });
@@ -216,8 +305,12 @@ async function buildLessonPlan(batchId, opts = {}) {
       already_done: Number(m.hours_already_done) || 0,
       lesson_hours_total: round1(cum),
       sessions,
+      tasks: [],
+      weeklyHours: {},
+      monthlyHours: {},
       plannedHours: 0, deliveredHours: 0, firstDate: null, lastDate: null, days: 0,
-      _cursor: Number(m.hours_already_done) || 0
+      _cursor: Number(m.hours_already_done) || 0,
+      _taskMap: new Map()
     };
   });
   const modById = {};
@@ -235,22 +328,78 @@ async function buildLessonPlan(batchId, opts = {}) {
       r.delivered = Math.max(0, d);
       left -= r.delivered;
     });
+
+    const mon = getMondayYmd(date);
+    const wk = weekMap.get(mon);
+    if (wk) {
+      wk.teachingDays += 1;
+    }
   }
 
-  // ── Map each plan row to the lesson sessions it covers ──
+  // ── Map each plan row to the lesson sessions, tasks, and weekly Gantt buckets ──
   for (const r of planRows) {
     const m = modById[r.module_id];
     const hours = Number(r.hours) || 0;
+    const delivered = r.delivered || 0;
     r.lessons = [];
     if (!m) continue;
+
+    const mon = getMondayYmd(r.sdate);
+    const wk = weekMap.get(mon);
+    const weekNo = wk ? wk.weekNo : null;
+    if (wk) {
+      wk.plannedHours = round1(wk.plannedHours + hours);
+      wk.deliveredHours = round1(wk.deliveredHours + delivered);
+      if (!m.weeklyHours[weekNo]) m.weeklyHours[weekNo] = { planned: 0, delivered: 0, days: 0, lastDate: null };
+      m.weeklyHours[weekNo].planned = round1(m.weeklyHours[weekNo].planned + hours);
+      m.weeklyHours[weekNo].delivered = round1(m.weeklyHours[weekNo].delivered + delivered);
+      if (m.weeklyHours[weekNo].lastDate !== r.sdate) {
+        m.weeklyHours[weekNo].days += 1;
+        m.weeklyHours[weekNo].lastDate = r.sdate;
+      }
+
+      if (!m.monthlyHours[wk.monthKey]) m.monthlyHours[wk.monthKey] = { planned: 0, delivered: 0 };
+      m.monthlyHours[wk.monthKey].planned = round1(m.monthlyHours[wk.monthKey].planned + hours);
+      m.monthlyHours[wk.monthKey].delivered = round1(m.monthlyHours[wk.monthKey].delivered + delivered);
+    }
+
     const start = m._cursor;
     const end = start + hours;
     m._cursor = end;
     m.plannedHours += hours;
-    m.deliveredHours += r.delivered || 0;
+    m.deliveredHours += delivered;
     if (!m.firstDate) m.firstDate = r.sdate;
     if (m.lastDate !== r.sdate) m.days++;
     m.lastDate = r.sdate;
+
+    // Task-level aggregation for Work Plan Gantt drilldown
+    if (r.task_code) {
+      let tk = m._taskMap.get(r.task_code);
+      if (!tk) {
+        tk = {
+          task_id: r.task_id,
+          code: r.task_code,
+          title: r.task_title || r.task_code,
+          plannedHours: 0,
+          deliveredHours: 0,
+          firstDate: null,
+          lastDate: null,
+          days: 0,
+          weeklyHours: {}
+        };
+        m._taskMap.set(r.task_code, tk);
+      }
+      tk.plannedHours = round1(tk.plannedHours + hours);
+      tk.deliveredHours = round1(tk.deliveredHours + delivered);
+      if (!tk.firstDate) tk.firstDate = r.sdate;
+      if (tk.lastDate !== r.sdate) tk.days++;
+      tk.lastDate = r.sdate;
+      if (weekNo) {
+        if (!tk.weeklyHours[weekNo]) tk.weeklyHours[weekNo] = { planned: 0, delivered: 0 };
+        tk.weeklyHours[weekNo].planned = round1(tk.weeklyHours[weekNo].planned + hours);
+        tk.weeklyHours[weekNo].delivered = round1(tk.weeklyHours[weekNo].delivered + delivered);
+      }
+    }
 
     if (m.sessions.length) {
       for (let i = 0; i < m.sessions.length; i++) {
@@ -259,21 +408,40 @@ async function buildLessonPlan(batchId, opts = {}) {
         const sEnd = isLast ? Infinity : s.rangeEnd;
         const overlap = Math.min(end, sEnd) - Math.max(start, s.rangeStart);
         if (overlap > 1e-9) {
+          const sessDeliv = hours > 0 ? delivered * (overlap / hours) : 0;
           r.lessons.push({ session_no: s.session_no, title: s.title, focus: s.focus, hours: round1(overlap) });
           s.plannedHours += overlap;
-          s.deliveredHours += hours > 0 ? (r.delivered || 0) * (overlap / hours) : 0;
+          s.deliveredHours += sessDeliv;
           if (!s.firstDate) s.firstDate = r.sdate;
           if (s.lastDate !== r.sdate) s.days++;
           s.lastDate = r.sdate;
+          if (weekNo) {
+            if (!s.weeklyHours[weekNo]) s.weeklyHours[weekNo] = { planned: 0, delivered: 0 };
+            s.weeklyHours[weekNo].planned = round1(s.weeklyHours[weekNo].planned + overlap);
+            s.weeklyHours[weekNo].delivered = round1(s.weeklyHours[weekNo].delivered + sessDeliv);
+          }
         }
       }
     }
   }
 
+  // Finalize month totals in ganttMonths
+  const monthByKey = {};
+  ganttMonths.forEach(gm => { monthByKey[gm.monthKey] = gm; });
+  ganttWeeks.forEach(w => {
+    if (monthByKey[w.monthKey]) {
+      monthByKey[w.monthKey].plannedHours = round1(monthByKey[w.monthKey].plannedHours + w.plannedHours);
+      monthByKey[w.monthKey].deliveredHours = round1(monthByKey[w.monthKey].deliveredHours + w.deliveredHours);
+    }
+  });
+
   modules.forEach(m => {
     delete m._cursor;
+    m.tasks = Array.from(m._taskMap.values());
+    delete m._taskMap;
     m.plannedHours = round1(m.plannedHours);
     m.deliveredHours = round1(m.deliveredHours);
+    Object.values(m.weeklyHours).forEach(wh => { delete wh.lastDate; });
     m.sessions.forEach(s => {
       s.plannedHours = round1(s.plannedHours);
       s.deliveredHours = round1(s.deliveredHours);
@@ -329,6 +497,10 @@ async function buildLessonPlan(batchId, opts = {}) {
     weeklyHours,
     modules,
     days,
+    gantt: {
+      months: ganttMonths,
+      weeks: ganttWeeks
+    },
     totals: {
       curriculumHours: modules.reduce((a, m) => a + m.total_hours, 0),
       planned: totalPlanned,

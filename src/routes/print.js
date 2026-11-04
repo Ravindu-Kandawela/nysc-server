@@ -5,7 +5,16 @@ const db = require('../db');
 const { optionalAuth } = require('../middleware/auth');
 const { buildMonthlyReport } = require('../services/reportService');
 const { htmlToPdf } = require('../services/pdfService');
-const { renderMonthlyReport, renderChecklist, renderBatchChecklists, renderLessonPlan, renderMonthlyCalendarPlan, renderWorkPlan } = require('../templates/printTemplates');
+const {
+  renderMonthlyReport,
+  renderChecklist,
+  renderBatchChecklists,
+  renderLessonPlan,
+  renderMonthlyCalendarPlan,
+  renderBatchMonthlyCalendarPlan,
+  renderMonthlyAttendance,
+  renderWorkPlan
+} = require('../templates/printTemplates');
 const lessonPlanService = require('../services/lessonPlanService');
 
 /** Sanitize a string for safe OS filenames while preserving spaces, dashes, and letters */
@@ -513,14 +522,19 @@ async function getMonthlyCalendarData(batchId, targetYear, targetMonth) {
   };
 }
 
+const MONTH_NAMES_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 // -------------------------------------------------------------
 // 3. OFFICIAL MONTHLY PLAN CALENDAR (5-Column Mon-Fri Grid)
 //    Exact replica of Monthly Plan October.pdf
-// GET /api/print/monthly-plan?batchId=&year=&month=&from=&to=&format=html|pdf
+// GET /api/print/monthly-plan?batchId=&year=&month=&from=&to=&format=html|pdf&download=1
 // -------------------------------------------------------------
 router.get('/monthly-plan', optionalAuth, async (req, res) => {
   try {
-    const { batchId, year: qYear, month: qMonth, from, to, format = 'html' } = req.query;
+    const { batchId, year: qYear, month: qMonth, from, to, format = 'html', download } = req.query;
     if (!batchId) return res.status(400).send('batchId is required');
 
     let year = qYear ? Number(qYear) : null;
@@ -540,7 +554,11 @@ router.get('/monthly-plan', optionalAuth, async (req, res) => {
 
     const data = await getMonthlyCalendarData(batchId, year, month);
     const html = renderMonthlyCalendarPlan({ ...data, pdfHref: pdfLink(req) });
-    return sendHtmlOrPdf(res, html, format, `monthly_plan_${year}_${String(month).padStart(2, '0')}.pdf`);
+    const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, Number(month) - 1))];
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const filename = `Monthly Plan - ${monthKey} ${mName} ${year}.pdf`;
+    const asAttachment = download === '1' || download === 'true';
+    return sendHtmlOrPdf(res, html, format, filename, asAttachment);
   } catch (err) {
     console.error('Print monthly plan error:', err);
     res.status(500).send('Failed to generate monthly plan calendar');
@@ -549,12 +567,13 @@ router.get('/monthly-plan', optionalAuth, async (req, res) => {
 
 // -------------------------------------------------------------
 // 3B. OFFICIAL MONTHLY TIMETABLE (Schedule / Monthly Calendar)
-// GET /api/print/timetable?batchId=&from=&to=&month=&layout=grid|list&format=html|pdf
+// GET /api/print/timetable?batchId=&from=&to=&month=&layout=grid|list&format=html|pdf&download=1
 // -------------------------------------------------------------
 router.get('/timetable', optionalAuth, async (req, res) => {
   try {
-    const { batchId, from, to, month: qMonth, layout = 'grid', format = 'html' } = req.query;
+    const { batchId, from, to, month: qMonth, layout = 'grid', format = 'html', download } = req.query;
     if (!batchId) return res.status(400).send('batchId is required');
+    const asAttachment = download === '1' || download === 'true';
 
     // If layout is grid (default, matching Monthly Plan October.pdf):
     if (layout !== 'list') {
@@ -577,7 +596,10 @@ router.get('/timetable', optionalAuth, async (req, res) => {
 
       const data = await getMonthlyCalendarData(batchId, year, month);
       const html = renderMonthlyCalendarPlan({ ...data, pdfHref: pdfLink(req) });
-      return sendHtmlOrPdf(res, html, format, `monthly_timetable_${year}_${String(month).padStart(2, '0')}.pdf`);
+      const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, Number(month) - 1))];
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const filename = `Timetable - ${monthKey} ${mName} ${year}.pdf`;
+      return sendHtmlOrPdf(res, html, format, filename, asAttachment);
     }
 
     // List view (legacy layout):
@@ -847,21 +869,464 @@ router.get('/timetable', optionalAuth, async (req, res) => {
 </body>
 </html>`;
 
-    if (format === 'pdf') {
-      try {
-        const pdfBuffer = await htmlToPdf(html, { landscape: true, format: 'A4' });
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=nysc_monthly_timetable_${displayFrom}_${displayTo}.pdf`);
-        return res.send(pdfBuffer);
-      } catch (e) {
-        return res.send(html);
-      }
+    let listFilename = `Timetable List - ${displayFrom} to ${displayTo}.pdf`;
+    if (qMonth && qMonth.includes('-')) {
+      const [y, m] = qMonth.split('-').map(Number);
+      const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, m - 1))];
+      listFilename = `Timetable List - ${qMonth} ${mName} ${y}.pdf`;
+    } else if (from && from.length >= 7) {
+      const ym = from.slice(0, 7);
+      const [y, m] = ym.split('-').map(Number);
+      const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, m - 1))];
+      listFilename = `Timetable List - ${ym} ${mName} ${y}.pdf`;
     }
-
-    res.send(html);
+    return sendHtmlOrPdf(res, html, format, listFilename, asAttachment);
   } catch (err) {
     console.error('Print timetable error:', err);
     res.status(500).send('Failed to generate timetable print view');
+  }
+});
+
+// -------------------------------------------------------------
+// Helper: Course months list for a batch (from start_date + planned_months)
+// -------------------------------------------------------------
+async function getCourseMonthsList(batchId) {
+  const [batchRows] = await db.query('SELECT * FROM batches WHERE id = ?', [batchId]);
+  if (batchRows.length === 0) throw new Error('Batch not found');
+  const batch = batchRows[0];
+
+  const startDateStr = String(batch.start_date || '2026-07-01').slice(0, 10);
+  const [startYear, startMon] = startDateStr.split('-').map(Number);
+  const plannedMonths = Math.max(1, Number(batch.planned_months) || 6);
+
+  const monthSet = new Set();
+  for (let i = 0; i < plannedMonths; i++) {
+    const d = new Date(Date.UTC(startYear, startMon - 1 + i, 1));
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth() + 1;
+    monthSet.add(`${y}-${String(m).padStart(2, '0')}`);
+  }
+
+  // Also include any month that has plan_sessions or student_attendance
+  const [psMonths] = await db.query(
+    `SELECT DISTINCT SUBSTR(ps.sdate, 1, 7) as ym
+     FROM plan_sessions ps
+     JOIN plan_versions pv ON ps.plan_version_id = pv.id
+     WHERE ps.batch_id = ? AND pv.is_current = 1`,
+    [batchId]
+  );
+  psMonths.forEach(r => { if (r.ym) monthSet.add(r.ym); });
+
+  const [attMonths] = await db.query(
+    `SELECT DISTINCT SUBSTR(sdate, 1, 7) as ym
+     FROM student_attendance
+     WHERE batch_id = ?`,
+    [batchId]
+  );
+  attMonths.forEach(r => { if (r.ym) monthSet.add(r.ym); });
+
+  const sortedKeys = Array.from(monthSet).sort();
+  const months = sortedKeys.map(ym => {
+    const [year, mon] = ym.split('-').map(Number);
+    const daysInMonth = new Date(year, mon, 0).getDate();
+    const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, mon - 1))];
+    return {
+      month: ym,
+      year,
+      mon,
+      monthNameEn: mName,
+      label: `${mName} ${year}`,
+      from: `${ym}-01`,
+      to: `${ym}-${String(daysInMonth).padStart(2, '0')}`,
+      daysInMonth
+    };
+  });
+
+  return { batch, months };
+}
+
+// -------------------------------------------------------------
+// 3C. LIST MONTHS FOR BATCH TIMETABLE DOWNLOAD
+// GET /api/print/timetables-months?batchId=
+// -------------------------------------------------------------
+router.get('/timetables-months', optionalAuth, async (req, res) => {
+  try {
+    const { batchId } = req.query;
+    if (!batchId) return res.status(400).json({ error: 'batchId is required' });
+
+    const { batch, months } = await getCourseMonthsList(batchId);
+
+    const [psStats] = await db.query(
+      `SELECT SUBSTR(ps.sdate, 1, 7) as ym,
+              COUNT(DISTINCT ps.sdate) as teaching_days,
+              COALESCE(SUM(ps.hours), 0) as planned_hours
+       FROM plan_sessions ps
+       JOIN plan_versions pv ON ps.plan_version_id = pv.id
+       WHERE ps.batch_id = ? AND pv.is_current = 1
+       GROUP BY SUBSTR(ps.sdate, 1, 7)`,
+      [batchId]
+    );
+    const psMap = {};
+    psStats.forEach(r => { psMap[r.ym] = r; });
+
+    const [attStats] = await db.query(
+      `SELECT SUBSTR(sdate, 1, 7) as ym,
+              COUNT(DISTINCT sdate) as marked_days
+       FROM student_attendance
+       WHERE batch_id = ?
+       GROUP BY SUBSTR(sdate, 1, 7)`,
+      [batchId]
+    );
+    const attMap = {};
+    attStats.forEach(r => { attMap[r.ym] = Number(r.marked_days) || 0; });
+
+    const enriched = months.map(m => {
+      const ps = psMap[m.month] || {};
+      const teaching_days = Number(ps.teaching_days) || 0;
+      const planned_hours = Number(ps.planned_hours) || 0;
+      const marked_days = attMap[m.month] || 0;
+      return {
+        ...m,
+        teaching_days,
+        planned_hours,
+        marked_days,
+        is_scheduled: teaching_days > 0,
+        is_taught: marked_days > 0,
+        filename: sanitizeFilename(`Timetable - ${m.month} ${m.monthNameEn} ${m.year}.pdf`)
+      };
+    });
+
+    res.json({
+      batch: { id: batch.id, code: batch.code, name: batch.name },
+      total_months: enriched.length,
+      scheduled_months: enriched.filter(m => m.is_scheduled).length,
+      taught_months: enriched.filter(m => m.is_taught).length,
+      months: enriched
+    });
+  } catch (err) {
+    console.error('List timetables months error:', err);
+    res.status(500).json({ error: 'Failed to list timetable months' });
+  }
+});
+
+// -------------------------------------------------------------
+// 3D. BATCH TIMETABLES PRINT / COMBINED PDF (Multiple Months)
+// GET /api/print/timetables-batch?batchId=&months=2026-07,2026-08&onlyTaught=0&layout=grid&format=html|pdf&download=1
+// -------------------------------------------------------------
+router.get('/timetables-batch', optionalAuth, async (req, res) => {
+  try {
+    const {
+      batchId,
+      months: rawMonths,
+      onlyTaught = '0',
+      format = 'html',
+      download
+    } = req.query;
+    if (!batchId) return res.status(400).send('batchId is required');
+
+    const { batch, months: allMonths } = await getCourseMonthsList(batchId);
+    const [settingsRows] = await db.query('SELECT k, v FROM settings');
+    const settings = {};
+    settingsRows.forEach(r => { settings[r.k] = r.v; });
+
+    let selectedKeys = [];
+    if (rawMonths) {
+      selectedKeys = String(rawMonths).split(',').map(s => s.trim()).filter(Boolean);
+    } else if (onlyTaught === '1' || onlyTaught === 'true') {
+      const [attMonths] = await db.query(
+        `SELECT DISTINCT SUBSTR(sdate, 1, 7) as ym FROM student_attendance WHERE batch_id = ? ORDER BY ym ASC`,
+        [batchId]
+      );
+      selectedKeys = attMonths.map(r => r.ym).filter(Boolean);
+    }
+    if (selectedKeys.length === 0) {
+      selectedKeys = allMonths.map(m => m.month);
+    }
+
+    const monthsData = [];
+    for (const ym of selectedKeys) {
+      const [y, m] = ym.split('-').map(Number);
+      if (!y || !m) continue;
+      const calData = await getMonthlyCalendarData(batchId, y, m);
+      monthsData.push(calData);
+    }
+
+    if (monthsData.length === 0) {
+      return res.status(404).send('No timetable months matched the selection.');
+    }
+
+    const titleLabel = selectedKeys.length === 1
+      ? `Timetable - ${selectedKeys[0]}`
+      : `Monthly Timetables (${monthsData.length} Months)`;
+
+    const html = renderBatchMonthlyCalendarPlan({
+      monthsData,
+      batch,
+      settings,
+      pdfHref: pdfLink(req),
+      titleLabel
+    });
+
+    const filename = `${titleLabel} - ${batch.name}.pdf`;
+    const asAttachment = download === '1' || download === 'true';
+    return sendHtmlOrPdf(res, html, format, filename, asAttachment);
+  } catch (err) {
+    console.error('Batch print timetables error:', err);
+    res.status(500).send('Failed to generate batch timetables');
+  }
+});
+
+// -------------------------------------------------------------
+// Helper: Build Monthly Attendance Data for 1 Month
+// -------------------------------------------------------------
+async function getMonthlyAttendanceData(batchId, monthKey, shared = {}) {
+  const [year, mon] = String(monthKey).split('-').map(Number);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const startDate = `${year}-${String(mon).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(mon).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  let students = shared.students;
+  if (!students) {
+    const [stuRows] = await db.query(
+      'SELECT id, student_code, reg_no, full_name, gender FROM students WHERE batch_id = ? AND active = 1 ORDER BY id ASC',
+      [batchId]
+    );
+    students = stuRows;
+  }
+
+  const [attRows] = await db.query(
+    `SELECT student_id, sdate, status
+     FROM student_attendance
+     WHERE batch_id = ? AND sdate BETWEEN ? AND ?`,
+    [batchId, startDate, endDate]
+  );
+
+  const [holRows] = await db.query(
+    'SELECT hdate, name FROM holidays WHERE hdate BETWEEN ? AND ?',
+    [startDate, endDate]
+  );
+
+  const records = {};
+  const markedDateSet = new Set();
+  for (const r of attRows) {
+    const dStr = typeof r.sdate === 'string'
+      ? r.sdate.slice(0, 10)
+      : new Date(r.sdate).toLocaleDateString('sv-SE');
+    const day = parseInt(dStr.slice(8, 10), 10);
+    if (!records[r.student_id]) records[r.student_id] = {};
+    records[r.student_id][day] = r.status;
+    markedDateSet.add(dStr);
+  }
+
+  const holidayMap = {};
+  for (const h of holRows) {
+    const dStr = typeof h.hdate === 'string'
+      ? h.hdate.slice(0, 10)
+      : new Date(h.hdate).toLocaleDateString('sv-SE');
+    holidayMap[dStr] = h.name;
+  }
+
+  const mName = MONTH_NAMES_EN[Math.max(0, Math.min(11, mon - 1))];
+
+  return {
+    monthKey,
+    year,
+    mon,
+    monthNameEn: mName,
+    daysInMonth,
+    students,
+    records,
+    holidayMap,
+    markedDaysCount: markedDateSet.size
+  };
+}
+
+// -------------------------------------------------------------
+// 6A. LIST MONTHS FOR BATCH ATTENDANCE DOWNLOAD
+// GET /api/print/attendance-months?batchId=
+// -------------------------------------------------------------
+router.get('/attendance-months', optionalAuth, async (req, res) => {
+  try {
+    const { batchId } = req.query;
+    if (!batchId) return res.status(400).json({ error: 'batchId is required' });
+
+    const { batch, months } = await getCourseMonthsList(batchId);
+
+    const [attStats] = await db.query(
+      `SELECT SUBSTR(sdate, 1, 7) as ym,
+              COUNT(DISTINCT sdate) as marked_days,
+              COUNT(*) as total_records,
+              SUM(CASE WHEN status IN ('P', 'L') THEN 1 ELSE 0 END) as present_records
+       FROM student_attendance
+       WHERE batch_id = ?
+       GROUP BY SUBSTR(sdate, 1, 7)`,
+      [batchId]
+    );
+    const statMap = {};
+    attStats.forEach(r => { statMap[r.ym] = r; });
+
+    const enriched = months.map(m => {
+      const st = statMap[m.month] || {};
+      const marked_days = Number(st.marked_days) || 0;
+      const total_records = Number(st.total_records) || 0;
+      const present_records = Number(st.present_records) || 0;
+      const attendance_rate = total_records > 0 ? Math.round((present_records / total_records) * 100) : 0;
+      return {
+        ...m,
+        marked_days,
+        total_records,
+        attendance_rate,
+        is_marked: marked_days > 0,
+        filename: sanitizeFilename(`Attendance Register - ${m.month} ${m.monthNameEn} ${m.year}.pdf`)
+      };
+    });
+
+    res.json({
+      batch: { id: batch.id, code: batch.code, name: batch.name },
+      total_months: enriched.length,
+      marked_months: enriched.filter(m => m.is_marked).length,
+      months: enriched
+    });
+  } catch (err) {
+    console.error('List attendance months error:', err);
+    res.status(500).json({ error: 'Failed to list attendance months' });
+  }
+});
+
+// -------------------------------------------------------------
+// 6B. SINGLE MONTH OFFICIAL ATTENDANCE REGISTER PRINT / PDF
+// GET /api/print/attendance?batchId=&month=YYYY-MM&paperSize=a4|legal&format=html|pdf&download=1
+// -------------------------------------------------------------
+router.get('/attendance', optionalAuth, async (req, res) => {
+  try {
+    const {
+      batchId,
+      month: rawMonth,
+      paperSize: rawPaperSize = 'a4',
+      format = 'html',
+      download
+    } = req.query;
+    if (!batchId) return res.status(400).send('batchId is required');
+
+    const [batchRows] = await db.query('SELECT * FROM batches WHERE id = ?', [batchId]);
+    if (batchRows.length === 0) return res.status(404).send('Batch not found');
+    const batch = batchRows[0];
+
+    const [settingsRows] = await db.query('SELECT k, v FROM settings');
+    const settings = {};
+    settingsRows.forEach(r => { settings[r.k] = r.v; });
+
+    const monthKey = rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)
+      ? rawMonth
+      : String(batch.start_date || '2026-07-01').slice(0, 7);
+
+    const paperSize = String(rawPaperSize).toLowerCase() === 'legal' ? 'legal' : 'a4';
+    const mData = await getMonthlyAttendanceData(batchId, monthKey);
+
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
+    const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+
+    const titleLabel = `Attendance Register - ${mData.monthKey} ${mData.monthNameEn} ${mData.year}`;
+    const html = renderMonthlyAttendance({
+      monthsData: [mData],
+      batch,
+      settings,
+      paperSize,
+      a4Href,
+      legalHref,
+      pdfHref: pdfLink(req),
+      titleLabel
+    });
+
+    const filename = `${titleLabel}.pdf`;
+    const asAttachment = download === '1' || download === 'true';
+    return sendHtmlOrPdf(res, html, format, filename, asAttachment);
+  } catch (err) {
+    console.error('Print monthly attendance error:', err);
+    res.status(500).send('Failed to generate monthly attendance register');
+  }
+});
+
+// -------------------------------------------------------------
+// 6C. BATCH MONTHLY ATTENDANCE REGISTERS (Multiple Months in 1 File)
+// GET /api/print/attendance-batch?batchId=&months=2026-07,2026-08&onlyMarked=1&paperSize=a4|legal&format=html|pdf&download=1
+// -------------------------------------------------------------
+router.get('/attendance-batch', optionalAuth, async (req, res) => {
+  try {
+    const {
+      batchId,
+      months: rawMonths,
+      onlyMarked = '1',
+      paperSize: rawPaperSize = 'a4',
+      format = 'html',
+      download
+    } = req.query;
+    if (!batchId) return res.status(400).send('batchId is required');
+
+    const { batch, months: allMonths } = await getCourseMonthsList(batchId);
+    const [settingsRows] = await db.query('SELECT k, v FROM settings');
+    const settings = {};
+    settingsRows.forEach(r => { settings[r.k] = r.v; });
+
+    const [students] = await db.query(
+      'SELECT id, student_code, reg_no, full_name, gender FROM students WHERE batch_id = ? AND active = 1 ORDER BY id ASC',
+      [batchId]
+    );
+
+    let selectedKeys = [];
+    if (rawMonths) {
+      selectedKeys = String(rawMonths).split(',').map(s => s.trim()).filter(Boolean);
+    } else if (onlyMarked === '1' || onlyMarked === 'true') {
+      const [attMonths] = await db.query(
+        `SELECT DISTINCT SUBSTR(sdate, 1, 7) as ym FROM student_attendance WHERE batch_id = ? ORDER BY ym ASC`,
+        [batchId]
+      );
+      selectedKeys = attMonths.map(r => r.ym).filter(Boolean);
+    }
+    if (selectedKeys.length === 0) {
+      selectedKeys = allMonths.map(m => m.month);
+    }
+
+    const monthsData = [];
+    for (const ym of selectedKeys) {
+      if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+      const mData = await getMonthlyAttendanceData(batchId, ym, { students });
+      monthsData.push(mData);
+    }
+
+    if (monthsData.length === 0) {
+      return res.status(404).send('No attendance months matched the selection.');
+    }
+
+    const paperSize = String(rawPaperSize).toLowerCase() === 'legal' ? 'legal' : 'a4';
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
+    const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+
+    const titleLabel = monthsData.length === 1
+      ? `Attendance Register - ${monthsData[0].monthKey} ${monthsData[0].monthNameEn} ${monthsData[0].year}`
+      : `Monthly Attendance Registers (${monthsData.length} Months)`;
+
+    const html = renderMonthlyAttendance({
+      monthsData,
+      batch,
+      settings,
+      paperSize,
+      a4Href,
+      legalHref,
+      pdfHref: pdfLink(req),
+      titleLabel
+    });
+
+    const filename = `${titleLabel} - ${batch.name}.pdf`;
+    const asAttachment = download === '1' || download === 'true';
+    return sendHtmlOrPdf(res, html, format, filename, asAttachment);
+  } catch (err) {
+    console.error('Batch print attendance error:', err);
+    res.status(500).send('Failed to generate batch attendance registers');
   }
 });
 

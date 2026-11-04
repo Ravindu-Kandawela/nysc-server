@@ -1980,15 +1980,665 @@ function renderWorkPlan({
 </html>`;
 }
 
+// =====================================================================
+// BATCH MONTHLY CALENDAR TIMETABLE (Multiple Months in 1 Document)
+// Classic Institutional 5-Column Grid (Monday - Friday) with 20mm Gutter
+// =====================================================================
+function renderBatchMonthlyCalendarPlan({
+  monthsData = [],
+  batch = {},
+  settings = {},
+  pdfHref = '#',
+  titleLabel = 'Monthly Timetables'
+}) {
+  const teacherName = settings.teacher_name || 'R.Kandawela';
+  const teacherDesig = settings.teacher_designation || 'Computer Instructor';
+  const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
+  const approverTitle = settings.approver_title || DEFAULT_APPROVER_TITLE;
+  const centreName = settings.centre_name_si || settings.form_centre_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${esc(titleLabel)} — ${esc(batch.name)} (${monthsData.length} Months)</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    @page {
+      size: A4 landscape;
+      margin: 8mm 10mm 8mm 20mm;
+    }
+    body {
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', serif;
+      margin: 0;
+      padding: 0;
+      color: #000;
+      font-size: 8.5pt;
+    }
+    .page {
+      width: 297mm;
+      min-height: 210mm;
+      margin: 14px auto;
+      background: #fff;
+      padding: 8mm 10mm 8mm 20mm;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      break-after: page;
+    }
+    .page:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+      .no-print { display: none !important; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+    }
+    ${TOOLBAR_CSS}
+
+    .plan-header { margin-bottom: 5px; text-align: center; }
+    .plan-header .org-line { font-size: 10.5pt; font-weight: bold; color: #111; letter-spacing: 0.3px; }
+    .plan-header .title-main {
+      font-size: 15.5pt; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;
+      color: #000; margin: 2px 0 4px 0; text-decoration: underline; text-underline-offset: 3px;
+    }
+    .meta-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 3.5px 10px; border-top: 1.5pt solid #000; border-bottom: 1pt solid #000;
+      font-size: 9.8pt; font-weight: bold; color: #000; background: #f5f5f5;
+    }
+    .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4px; margin-bottom: 5px; }
+    .cal-table th {
+      background: #eaecef; color: #000; border: 1pt solid #000; padding: 5px 4px;
+      font-size: 10pt; font-weight: bold; text-align: center; width: 20%;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .cal-table td {
+      border: 1pt solid #111; vertical-align: top; padding: 4px 5px;
+      height: 24.5mm; overflow: hidden; background: #ffffff;
+    }
+    .cell-empty { background: #f9fafb !important; border: 1pt solid #888 !important; }
+    .cell-before { background: #fafafa; color: #555; }
+    .cell-top {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 3px; border-bottom: 0.6pt dotted #666; padding-bottom: 1.5px;
+    }
+    .day-num { font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; font-weight: bold; color: #000; line-height: 1; }
+    .day-hrs {
+      font-family: 'Times New Roman', Times, serif; font-size: 7.8pt; font-weight: bold;
+      color: #111; border: 0.5pt solid #444; padding: 0.5px 4px; background: #f3f4f6; line-height: 1.1;
+    }
+    .cell-body { font-size: 7.8pt; line-height: 1.24; color: #000; font-family: 'Calibri', 'Segoe UI', 'Iskoola Pota', sans-serif; }
+    .topic-line { margin-bottom: 2.5px; font-weight: 500; }
+    .topic-line strong { color: #000; }
+    .tag-act, .tag-assign, .tag-software { font-style: italic; font-weight: bold; font-size: 7pt; color: #222; }
+    .cell-holiday { background: #f3f4f6 !important; }
+    .holiday-box {
+      color: #000; font-family: 'Book Antiqua', 'Times New Roman', serif; font-weight: bold;
+      font-style: italic; font-size: 8.5pt; line-height: 1.3; margin-top: 6px;
+      text-align: center; padding: 4px 3px; border: 0.5pt dashed #555; background: #fff;
+    }
+    .plan-footer {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      padding-top: 5px; border-top: 1.5pt double #000; margin-top: 3px; font-size: 8.8pt;
+    }
+    .ftr-course { font-size: 10.5pt; font-weight: bold; color: #000; }
+    .ftr-year-month { font-size: 9pt; font-weight: bold; color: #222; margin-top: 1px; }
+    .ftr-stats { font-size: 8pt; color: #333; margin-top: 1px; font-style: italic; }
+    .sig-container { display: flex; gap: 32mm; }
+    .sig-col { min-width: 55mm; text-align: left; }
+    .sig-line { border-bottom: 0.75pt dotted #000; height: 15px; margin-bottom: 3px; }
+    .sig-name { font-size: 8.8pt; font-weight: bold; color: #000; }
+    .sig-desig { font-size: 7.8pt; color: #333; }
+  </style>
+</head>
+<body>
+  ${toolbar(`${titleLabel} — ${batch.name} (${monthsData.length} Months)`, pdfHref)}
+
+  ${monthsData.map(item => {
+    const { year, month, weeks = [], totals = {} } = item;
+    const mIdx = Math.max(0, Math.min(11, Number(month) - 1));
+    const monthNameEn = MONTH_NAMES_EN[mIdx];
+    const monthNameSi = MONTH_NAMES_SI[mIdx];
+    return `
+      <div class="page">
+        <div>
+          <div class="plan-header">
+            <div class="org-line">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreName)}</div>
+            <h1 class="title-main">Monthly Training Schedule &amp; Lesson Plan</h1>
+            <div class="meta-bar">
+              <span>COURSE: ICT TECHNICIAN (NVQ LEVEL 4)</span>
+              <span>BATCH: ${esc(batch.name)}</span>
+              <span>YEAR: ${year}</span>
+              <span>MONTH: ${monthNameEn.toUpperCase()} (${monthNameSi})</span>
+            </div>
+          </div>
+
+          <table class="cal-table">
+            <thead>
+              <tr>
+                <th>Monday</th>
+                <th>Tuesday</th>
+                <th>Wednesday</th>
+                <th>Thursday</th>
+                <th>Friday</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${weeks.map(week => `
+                <tr>
+                  ${week.map(cell => {
+                    if (!cell.inMonth) return `<td class="cell-empty"></td>`;
+                    if (cell.isHoliday) {
+                      return `
+                        <td class="cell-holiday">
+                          <div class="cell-top">
+                            <span class="day-num">${cell.day}</span>
+                            <span class="day-hrs">HOLIDAY</span>
+                          </div>
+                          <div class="holiday-box">${esc(cell.holidayName)}</div>
+                        </td>
+                      `;
+                    }
+                    if (cell.isClosure) {
+                      return `
+                        <td class="cell-before">
+                          <div class="cell-top">
+                            <span class="day-num">${cell.day}</span>
+                            <span class="day-hrs">OFF</span>
+                          </div>
+                          <div style="font-size:8pt;color:#222;font-style:italic;text-align:center;padding-top:6px;">
+                            [ ${esc(cell.closureReason || 'Centre Closed')} ]
+                          </div>
+                        </td>
+                      `;
+                    }
+                    if (cell.isBeforeStart) {
+                      return `
+                        <td class="cell-before">
+                          <div class="cell-top"><span class="day-num">${cell.day}</span></div>
+                          <div style="font-size:7.5pt;color:#666;font-style:italic;padding-top:4px;">
+                            Prior to batch commencement
+                          </div>
+                        </td>
+                      `;
+                    }
+                    return `
+                      <td>
+                        <div class="cell-top">
+                          <span class="day-num">${cell.day}</span>
+                          ${cell.hours ? `<span class="day-hrs">${cell.hours} Hrs</span>` : ''}
+                        </div>
+                        <div class="cell-body">${cell.contentHtml}</div>
+                      </td>
+                    `;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="plan-footer">
+          <div>
+            <div class="ftr-course">ICTT – NVQ Level 4 (${esc(batch.name)})</div>
+            <div class="ftr-year-month">${monthNameEn} ${year} — ${totals.teachingDays || 0} Teaching Days · ${totals.totalHours || 0} Scheduled Hours</div>
+            <div class="ftr-stats">Technical Training Centre – Akuressa · National Youth Services Council</div>
+          </div>
+
+          <div class="sig-container">
+            <div class="sig-col">
+              <div class="sig-line"></div>
+              <div class="sig-name">Prepared by :- ${esc(teacherName || 'Course Instructor')}</div>
+              <div class="sig-desig">${esc(teacherDesig)}</div>
+            </div>
+            <div class="sig-col">
+              <div class="sig-line"></div>
+              <div class="sig-name">Approved by :- ${esc(approverName || 'Centre In-Charge')}</div>
+              <div class="sig-desig">${esc(approverTitle)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('')}
+</body>
+</html>`;
+}
+
+// =====================================================================
+// MONTHLY STUDENT ATTENDANCE REGISTER (Single or Multi-Month Batch)
+// Classic Institutional Register Style (A4 & Legal Landscape)
+// Includes 20mm Left Binding/Punch Gutter
+// =====================================================================
+function renderMonthlyAttendance({
+  monthsData = [],
+  batch = {},
+  settings = {},
+  paperSize = 'a4',
+  a4Href = '#',
+  legalHref = '#',
+  pdfHref = '#',
+  titleLabel = 'Monthly Attendance Register'
+}) {
+  const isLegal = String(paperSize).toLowerCase() === 'legal';
+  const pageWidthMm = isLegal ? '355.6mm' : '297mm';
+  const pageHeightMm = isLegal ? '215.9mm' : '210mm';
+
+  const courseName = settings.course_title || 'Information & Communication Technology Technician (ICTT - NVQ Level 4)';
+  const teacherName = settings.teacher_name || 'R.Kandawela';
+  const teacherDesig = settings.teacher_designation || 'Computer Instructor';
+  const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
+  const approverTitle = settings.center_in_charge_title || DEFAULT_APPROVER_TITLE;
+  const centreSi = settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
+  const centreEn = settings.institute_name || 'Technical Training Centre – Akuressa';
+
+  const DOW_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${esc(titleLabel)} — ${esc(batch.name)} (${isLegal ? 'Legal' : 'A4'})</title>
+  <style>
+    /* 20mm left binding/punch gutter */
+    @page {
+      size: ${isLegal ? '355.6mm 215.9mm' : 'A4 landscape'};
+      margin: 8mm 8mm 8mm 20mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      margin: 0;
+      padding: 0;
+      color: #000;
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', serif;
+      font-size: ${isLegal ? '8pt' : '7.2pt'};
+    }
+    ${TOOLBAR_CSS}
+    .att-sheet {
+      width: 100%;
+      page-break-after: always;
+      break-after: page;
+    }
+    .att-sheet:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media screen {
+      .att-sheet {
+        width: ${pageWidthMm};
+        min-height: ${pageHeightMm};
+        margin: 14px auto;
+        background: #fff;
+        padding: 8mm 8mm 8mm 20mm;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+      }
+    }
+
+    .att-masthead {
+      text-align: center;
+      border-bottom: 2pt double #000;
+      padding-bottom: 4px;
+      margin-bottom: 5px;
+    }
+    .att-masthead .org-title {
+      font-size: ${isLegal ? '10.8pt' : '9.8pt'};
+      font-weight: bold;
+      letter-spacing: 0.3px;
+      color: #000;
+    }
+    .att-masthead .doc-title {
+      font-size: ${isLegal ? '13.5pt' : '12.2pt'};
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 1px 0;
+      text-decoration: underline;
+      text-underline-offset: 2.5px;
+    }
+    .att-masthead .course-sub {
+      font-size: ${isLegal ? '8.5pt' : '7.8pt'};
+      font-weight: bold;
+      color: #222;
+    }
+
+    .att-spec-strip {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 5px;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: ${isLegal ? '8pt' : '7.3pt'};
+    }
+    .att-spec-strip td {
+      border: 0.75pt solid #000;
+      padding: 2.5px 6px;
+      background: #fafafa;
+    }
+
+    .att-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-family: 'Times New Roman', Times, serif;
+    }
+    .att-table th, .att-table td {
+      border: 0.65pt solid #111;
+      padding: ${isLegal ? '2px 2px' : '1.5px 1px'};
+      vertical-align: middle;
+      text-align: center;
+      overflow: hidden;
+    }
+    .att-table thead th {
+      background: #eaecef;
+      color: #000;
+      font-weight: bold;
+      font-size: ${isLegal ? '7.2pt' : '6.3pt'};
+      line-height: 1.1;
+    }
+    .col-idx { width: ${isLegal ? '6mm' : '5mm'}; font-weight: bold; }
+    .col-name {
+      width: ${isLegal ? '52mm' : '42mm'};
+      text-align: left !important;
+      padding-left: 3px !important;
+      font-family: 'Calibri', 'Arial', sans-serif;
+      font-weight: bold;
+      font-size: ${isLegal ? '7.3pt' : '6.4pt'};
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .col-reg {
+      width: ${isLegal ? '21mm' : '17.5mm'};
+      font-size: ${isLegal ? '6.6pt' : '5.8pt'};
+      white-space: nowrap;
+    }
+    .col-sum {
+      width: ${isLegal ? '6.5mm' : '5.5mm'};
+      font-weight: bold;
+      background: #f5f6f8;
+      font-size: ${isLegal ? '6.8pt' : '6pt'};
+    }
+    .col-pct {
+      width: ${isLegal ? '9mm' : '7.8mm'};
+      font-weight: bold;
+      background: #eaecef;
+      font-size: ${isLegal ? '6.8pt' : '6pt'};
+    }
+    .day-hdr-wknd {
+      background: #d5d9e0 !important;
+      color: #333 !important;
+    }
+    .day-hdr-hol {
+      background: #dfe3e8 !important;
+      color: #000 !important;
+    }
+    .cell-wknd {
+      background: #f0f2f5;
+      color: #777;
+      font-size: 5.5pt;
+    }
+    .cell-hol {
+      background: #e9ecef;
+      color: #333;
+      font-weight: bold;
+      font-size: 5.5pt;
+    }
+    .st-P {
+      font-weight: bold;
+      color: #000;
+      font-size: ${isLegal ? '7pt' : '6.2pt'};
+    }
+    .st-A {
+      font-weight: bold;
+      color: #000;
+      background: #f3f4f6;
+      text-decoration: underline;
+      font-size: ${isLegal ? '7pt' : '6.2pt'};
+    }
+    .st-L, .st-E {
+      font-weight: bold;
+      font-style: italic;
+      color: #111;
+      font-size: ${isLegal ? '6.8pt' : '6pt'};
+    }
+    .tot-row td {
+      background: #eaecef;
+      font-weight: bold;
+      font-size: ${isLegal ? '6.6pt' : '5.8pt'};
+      border-top: 1.2pt solid #000;
+      border-bottom: 1.2pt solid #000;
+    }
+
+    .att-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 6px;
+      padding-top: 4px;
+      font-family: 'Book Antiqua', 'Times New Roman', serif;
+      font-size: ${isLegal ? '7.8pt' : '7pt'};
+    }
+    .sig-row {
+      display: flex;
+      gap: 28mm;
+    }
+    .sig-block {
+      min-width: 52mm;
+    }
+    .sig-line {
+      border-bottom: 0.75pt dotted #000;
+      height: 14px;
+      margin-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print no-print-bar">
+    <div>
+      <strong>${esc(titleLabel)} — ${esc(batch.name)}</strong>
+      <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#cbd5e1;">
+        ${isLegal ? 'Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : 'A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;">
+      ${a4Href && a4Href !== '#' ? `<a href="${a4Href}" class="btn ${!isLegal ? '' : 'btn-secondary'}" style="${!isLegal ? 'background:#059669;' : ''}">A4 Landscape</a>` : ''}
+      ${legalHref && legalHref !== '#' ? `<a href="${legalHref}" class="btn ${isLegal ? '' : 'btn-secondary'}" style="${isLegal ? 'background:#059669;' : ''}">Legal Landscape</a>` : ''}
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+      <a href="${pdfHref}" class="btn">⬇️ Download PDF</a>
+    </div>
+  </div>
+
+  ${monthsData.map(mData => {
+    const {
+      monthKey,
+      year,
+      mon,
+      daysInMonth,
+      students = [],
+      records = {},
+      holidayMap = {},
+      markedDaysCount = 0
+    } = mData;
+    const mIdx = Math.max(0, Math.min(11, Number(mon) - 1));
+    const monthNameEn = MONTH_NAMES_EN[mIdx];
+    const monthNameSi = MONTH_NAMES_SI[mIdx];
+
+    const daysArr = Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const dateStr = `${year}-${String(mon).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dow = new Date(year, mon - 1, d).getDay();
+      const isWeekend = dow === 0 || dow === 6;
+      const holidayName = holidayMap[dateStr] || null;
+      return { d, dateStr, dow, dowShort: DOW_SHORT[dow], isWeekend, holidayName };
+    });
+
+    // Daily present count
+    const dailyPresent = {};
+    daysArr.forEach(({ d }) => { dailyPresent[d] = 0; });
+
+    let totalPresentAll = 0;
+    let totalMarkedCellsAll = 0;
+
+    const studentRows = students.map((stu, idx) => {
+      const stuRec = records[stu.id] || {};
+      let p = 0, a = 0, l = 0, e = 0;
+      daysArr.forEach(({ d }) => {
+        const st = stuRec[d];
+        if (st === 'P') { p++; dailyPresent[d] = (dailyPresent[d] || 0) + 1; }
+        else if (st === 'A') a++;
+        else if (st === 'L') { l++; dailyPresent[d] = (dailyPresent[d] || 0) + 1; }
+        else if (st === 'E') e++;
+      });
+      const totalMarked = p + a + l + e;
+      totalPresentAll += (p + l);
+      totalMarkedCellsAll += totalMarked;
+      const pct = totalMarked > 0 ? Math.round(((p + l) / totalMarked) * 100) : null;
+      return { stu, idx: idx + 1, stuRec, p, a, l, e, pct };
+    });
+
+    const overallRate = totalMarkedCellsAll > 0 ? Math.round((totalPresentAll / totalMarkedCellsAll) * 100) : 0;
+    const holidayEntries = Object.entries(holidayMap || {});
+
+    return `
+      <section class="att-sheet">
+        <div class="att-masthead">
+          <div class="org-title">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)} (${esc(centreEn)})</div>
+          <div class="doc-title">ශිෂ්‍ය මාසික පැමිණීමේ ලේඛනය — STUDENT MONTHLY ATTENDANCE REGISTER</div>
+          <div class="course-sub">${esc(courseName)} · National Competency Standard (NCS: ${esc(batch.ncs_code || 'K72S002')})</div>
+        </div>
+
+        <table class="att-spec-strip">
+          <tr>
+            <td><strong>Batch / Intake :-</strong> ${esc(batch.name)}</td>
+            <td><strong>Month &amp; Year :-</strong> ${esc(monthNameEn)} ${year} (${esc(monthNameSi)})</td>
+            <td><strong>Total Trainees :-</strong> ${students.length}</td>
+            <td><strong>Marked Training Days :-</strong> ${markedDaysCount} Days</td>
+            <td><strong>Monthly Attendance Rate :-</strong> ${markedDaysCount > 0 ? `${overallRate}%` : 'Not Marked'}</td>
+            <td><strong>Instructor :-</strong> ${esc(teacherName)}</td>
+          </tr>
+        </table>
+
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th rowspan="2" class="col-idx">#</th>
+              <th rowspan="2" class="col-name">Trainee Name</th>
+              <th rowspan="2" class="col-reg">Reg. No.</th>
+              ${daysArr.map(day => `
+                <th class="${day.isWeekend ? 'day-hdr-wknd' : day.holidayName ? 'day-hdr-hol' : ''}" title="${day.holidayName ? esc(day.holidayName) : day.dateStr}">
+                  ${day.d}
+                </th>
+              `).join('')}
+              <th rowspan="2" class="col-sum" title="Present">P</th>
+              <th rowspan="2" class="col-sum" title="Absent">A</th>
+              <th rowspan="2" class="col-sum" title="Late">L</th>
+              <th rowspan="2" class="col-sum" title="Excused">E</th>
+              <th rowspan="2" class="col-pct">%</th>
+            </tr>
+            <tr>
+              ${daysArr.map(day => `
+                <th class="${day.isWeekend ? 'day-hdr-wknd' : day.holidayName ? 'day-hdr-hol' : ''}" style="font-size:${isLegal ? '5.6pt' : '5pt'};font-weight:normal;">
+                  ${day.holidayName ? 'H' : day.dowShort}
+                </th>
+              `).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${studentRows.map(({ stu, idx, stuRec, p, a, l, e, pct }) => `
+              <tr>
+                <td class="col-idx">${idx}</td>
+                <td class="col-name">${esc(stu.full_name)}</td>
+                <td class="col-reg">${esc(stu.reg_no || stu.student_code || '')}</td>
+                ${daysArr.map(day => {
+                  const st = stuRec[day.d];
+                  if (st) {
+                    return `<td class="st-${esc(st)}">${esc(st)}</td>`;
+                  }
+                  if (day.holidayName) {
+                    return `<td class="cell-hol" title="${esc(day.holidayName)}">H</td>`;
+                  }
+                  if (day.isWeekend) {
+                    return `<td class="cell-wknd">-</td>`;
+                  }
+                  return `<td></td>`;
+                }).join('')}
+                <td class="col-sum">${p || 0}</td>
+                <td class="col-sum">${a || 0}</td>
+                <td class="col-sum">${l || 0}</td>
+                <td class="col-sum">${e || 0}</td>
+                <td class="col-pct">${pct !== null ? `${pct}%` : '-'}</td>
+              </tr>
+            `).join('')}
+            <tr class="tot-row">
+              <td colspan="3" style="text-align:right;padding-right:6px;">DAILY PRESENT COUNT :-</td>
+              ${daysArr.map(day => {
+                const cnt = dailyPresent[day.d] || 0;
+                return `<td class="${day.isWeekend ? 'day-hdr-wknd' : day.holidayName ? 'day-hdr-hol' : ''}">${cnt > 0 ? cnt : (day.holidayName ? 'H' : '-')}</td>`;
+              }).join('')}
+              <td colspan="4" style="text-align:right;padding-right:4px;">AVG :-</td>
+              <td>${markedDaysCount > 0 ? `${overallRate}%` : '-'}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="att-footer">
+          <div>
+            <div style="font-weight:bold;">
+              Legend :- &nbsp; <strong>P</strong> = Present &nbsp;|&nbsp; <strong>A</strong> = Absent &nbsp;|&nbsp; <strong>L</strong> = Late &nbsp;|&nbsp; <strong>E</strong> = Excused &nbsp;|&nbsp; <strong>H</strong> = Public Holiday &nbsp;|&nbsp; <strong>Sa/Su</strong> = Weekend
+            </div>
+            ${holidayEntries.length > 0 ? `
+              <div style="margin-top:2px;color:#333;font-size:6.5pt;font-style:italic;">
+                Public Holidays in ${esc(monthNameEn)} ${year}: ${holidayEntries.map(([dt, nm]) => `${Number(dt.slice(8, 10))} ${monthNameEn.slice(0, 3)} (${esc(nm)})`).join(' · ')}
+              </div>
+            ` : `
+              <div style="margin-top:2px;color:#333;font-size:6.5pt;font-style:italic;">
+                Official Student Attendance Register · Technical Training Centre – Akuressa (${esc( monthKey )})
+              </div>
+            `}
+          </div>
+
+          <div class="sig-row">
+            <div class="sig-block">
+              <div class="sig-line"></div>
+              <div><strong>Prepared by :-</strong> ${esc(teacherName)}</div>
+              <div style="font-size:6.6pt;color:#333;">${esc(teacherDesig)}</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-line"></div>
+              <div><strong>Approved by :-</strong> ${esc(approverName)}</div>
+              <div style="font-size:6.6pt;color:#333;">${esc(approverTitle)}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }).join('')}
+</body>
+</html>`;
+}
+
 module.exports = {
   renderMonthlyReport,
   renderChecklist,
   renderBatchChecklists,
   renderLessonPlan,
   renderMonthlyCalendarPlan,
+  renderBatchMonthlyCalendarPlan,
+  renderMonthlyAttendance,
   renderWorkPlan,
   paginateStudents,
   splitName,
   SI_MONTHS
 };
+
 

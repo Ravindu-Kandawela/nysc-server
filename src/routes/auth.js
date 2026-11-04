@@ -6,6 +6,14 @@ const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
+const ADMIN_EMAILS = new Set(['ravindukandawela@gmail.com']);
+const INSPECTION_ACCOUNTS = new Set(['teacher@nysc.lk', 'instructor@nysc.lk']);
+
+function getRoleForEmail(email) {
+  const norm = String(email || '').trim().toLowerCase();
+  return ADMIN_EMAILS.has(norm) ? 'admin' : 'standard';
+}
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
@@ -14,7 +22,20 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    const normEmail = email.trim().toLowerCase();
+    let [rows] = await db.query('SELECT * FROM users WHERE LOWER(email) = ?', [normEmail]);
+
+    // Auto-provision standard/inspection teacher account if logging in with teacher@nysc.lk or instructor@nysc.lk
+    if (rows.length === 0 && INSPECTION_ACCOUNTS.has(normEmail)) {
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash('password123', salt);
+      await db.query(
+        'INSERT IGNORE INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+        ['K.A.R.Lakshan', normEmail, hash]
+      );
+      [rows] = await db.query('SELECT * FROM users WHERE LOWER(email) = ?', [normEmail]);
+    }
+
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -39,8 +60,9 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    const role = getRoleForEmail(user.email);
     const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
+      { id: user.id, email: user.email, name: user.name, role },
       process.env.JWT_SECRET || 'nysc_teacher_records_secret_key_2026_super_secure',
       { expiresIn: '30d' }
     );
@@ -50,7 +72,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role
       }
     });
   } catch (err) {
@@ -66,7 +89,8 @@ router.get('/me', requireAuth, async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json({ user: rows[0] });
+    const u = rows[0];
+    res.json({ user: { ...u, role: getRoleForEmail(u.email) } });
   } catch (err) {
     console.error('Me error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -119,7 +143,8 @@ router.put('/profile', requireAuth, async (req, res) => {
 
     await db.query('INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', ['teacher_name', name.trim()]);
 
-    res.json({ message: 'Profile updated successfully', user: { id: req.user.id, name: name.trim(), email: email.trim() } });
+    const role = getRoleForEmail(email);
+    res.json({ message: 'Profile updated successfully', user: { id: req.user.id, name: name.trim(), email: email.trim(), role } });
   } catch (err) {
     console.error('Profile update error:', err);
     res.status(500).json({ error: 'Failed to update profile' });
@@ -127,4 +152,3 @@ router.put('/profile', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
-

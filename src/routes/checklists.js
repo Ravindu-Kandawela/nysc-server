@@ -120,6 +120,9 @@ router.get('/progress/summary', requireAuth, async (req, res) => {
 // Read-only analysis of existing manual checklist records vs Lesson Plan dates & Student Attendance
 router.get('/analyze/plan', requireAuth, async (req, res) => {
   try {
+    if (req.user?.role === 'standard') {
+      return res.status(403).json({ error: 'Not available for this account' });
+    }
     const batchId = req.params.id;
 
     // 1. Active students
@@ -255,6 +258,9 @@ router.get('/analyze/plan', requireAuth, async (req, res) => {
 // Automatically fills missing student checklists using Lesson Plan dates (or closest Present date if absent).
 // NEVER overwrites or modifies existing manual checklist entries.
 router.post('/auto-fill', requireAuth, async (req, res) => {
+  if (req.user?.role === 'standard') {
+    return res.status(403).json({ error: 'Auto-fill is not available for this account' });
+  }
   const connection = await db.getConnection();
   try {
     const batchId = req.params.id;

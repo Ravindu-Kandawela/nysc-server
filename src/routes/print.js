@@ -5,8 +5,16 @@ const db = require('../db');
 const { optionalAuth } = require('../middleware/auth');
 const { buildMonthlyReport } = require('../services/reportService');
 const { htmlToPdf } = require('../services/pdfService');
-const { renderMonthlyReport, renderChecklist, renderLessonPlan, renderMonthlyCalendarPlan, renderWorkPlan } = require('../templates/printTemplates');
+const { renderMonthlyReport, renderChecklist, renderBatchChecklists, renderLessonPlan, renderMonthlyCalendarPlan, renderWorkPlan } = require('../templates/printTemplates');
 const lessonPlanService = require('../services/lessonPlanService');
+
+/** Sanitize a string for safe OS filenames while preserving spaces, dashes, and letters */
+function sanitizeFilename(name) {
+  return String(name || '')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /** Keep the auth token on the "Download PDF" link inside the preview */
 function pdfLink(req) {
@@ -14,12 +22,17 @@ function pdfLink(req) {
   return `${req.baseUrl}${req.path}?${q.toString()}`;
 }
 
-async function sendHtmlOrPdf(res, html, format, filename) {
+async function sendHtmlOrPdf(res, html, format, filename, asAttachment = false) {
   if (format === 'pdf') {
     try {
       const pdfBuffer = await htmlToPdf(html, { cssPageSize: true });
+      const cleanName = sanitizeFilename(filename) || 'document.pdf';
+      const disp = asAttachment ? 'attachment' : 'inline';
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename=${filename}`);
+      res.setHeader(
+        'Content-Disposition',
+        `${disp}; filename="${cleanName.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName)}`
+      );
       return res.send(pdfBuffer);
     } catch (pdfErr) {
       console.warn('PDF generation failed, falling back to HTML:', pdfErr.message);
@@ -138,10 +151,236 @@ router.get('/checklist', optionalAuth, async (req, res) => {
       a4Href,
       pdfHref: pdfLink(req)
     });
-    return sendHtmlOrPdf(res, html, format, `checklist_${task.code}_${paperSize}.pdf`);
+    const includeModule = req.query.includeModule === '1' || req.query.includeModule === 'true';
+    const asAttachment = req.query.download === '1' || req.query.download === 'true';
+    const savedTaskFilename = includeModule
+      ? `${task.module_code} - ${task.code} - ${task.title}.pdf`
+      : `${task.code} - ${task.title}.pdf`;
+    return sendHtmlOrPdf(res, html, format, savedTaskFilename, asAttachment);
   } catch (err) {
     console.error('Print checklist error:', err);
     res.status(500).send('Failed to generate checklist print view');
+  }
+});
+
+// -------------------------------------------------------------
+// 2b. LIST & BATCH DOWNLOAD / PRINT CHECKLISTS
+//     Supports downloading all marked tasks or selected modules' tasks
+//     with their current manually saved task code & title
+// GET /api/print/checklists-list?batchId=&moduleIds=1,2&onlyMarked=1
+// GET /api/print/checklists-batch?batchId=&moduleIds=1,2&onlyMarked=1&paperSize=legal|a4&format=html|pdf
+// -------------------------------------------------------------
+router.get('/checklists-list', optionalAuth, async (req, res) => {
+  try {
+    const { batchId, moduleIds = '', onlyMarked = '1' } = req.query;
+    if (!batchId) return res.status(400).json({ error: 'batchId is required' });
+
+    const modFilterIds = String(moduleIds)
+      .split(',')
+      .map(x => Number(x.trim()))
+      .filter(Boolean);
+
+    const [tasks] = await db.query(`
+      SELECT t.id, t.module_id, m.code as module_code, m.title as module_title,
+             t.code, t.title, t.sort_order,
+             (
+               SELECT COUNT(DISTINCT tc.student_id)
+               FROM task_competency tc
+               JOIN students s ON s.id = tc.student_id
+               WHERE tc.task_id = t.id AND tc.competent = 1 AND s.batch_id = ? AND s.status = 'active'
+             ) as comp_count,
+             (
+               SELECT COUNT(DISTINCT cr.student_id)
+               FROM checklist_results cr
+               JOIN steps stp ON stp.id = cr.step_id
+               JOIN students s ON s.id = cr.student_id
+               WHERE stp.task_id = t.id AND cr.achieved = 1 AND s.batch_id = ? AND s.status = 'active'
+             ) as step_students_count
+      FROM tasks t
+      JOIN modules m ON m.id = t.module_id
+      WHERE m.has_checklist = 1
+      ORDER BY m.code ASC, t.sort_order ASC, t.id ASC
+    `, [batchId, batchId]);
+
+    const onlyMarkedBool = onlyMarked !== '0' && onlyMarked !== 'false';
+    const filtered = tasks.filter(t => {
+      if (modFilterIds.length > 0 && !modFilterIds.includes(Number(t.module_id))) {
+        return false;
+      }
+      const isMarked = Number(t.comp_count) > 0 || Number(t.step_students_count) > 0;
+      if (onlyMarkedBool && !isMarked) return false;
+      return true;
+    }).map(t => ({
+      id: t.id,
+      module_id: t.module_id,
+      module_code: t.module_code,
+      module_title: t.module_title,
+      code: t.code,
+      title: t.title,
+      marked_students: Math.max(Number(t.comp_count), Number(t.step_students_count)),
+      is_marked: Number(t.comp_count) > 0 || Number(t.step_students_count) > 0,
+      filename_task: sanitizeFilename(`${t.code} - ${t.title}.pdf`),
+      filename_module_task: sanitizeFilename(`${t.module_code} - ${t.code} - ${t.title}.pdf`)
+    }));
+
+    res.json({ tasks: filtered, count: filtered.length });
+  } catch (err) {
+    console.error('Checklists list error:', err);
+    res.status(500).json({ error: 'Failed to list checklists for batch download' });
+  }
+});
+
+router.get('/checklists-batch', optionalAuth, async (req, res) => {
+  try {
+    const {
+      batchId,
+      moduleIds = '',
+      onlyMarked = '1',
+      paperSize: rawPaperSize = 'legal',
+      format = 'html'
+    } = req.query;
+    if (!batchId) return res.status(400).send('batchId is required');
+
+    const paperSize = String(rawPaperSize).toLowerCase() === 'a4' ? 'a4' : 'legal';
+    const modFilterIds = String(moduleIds)
+      .split(',')
+      .map(x => Number(x.trim()))
+      .filter(Boolean);
+    const onlyMarkedBool = onlyMarked !== '0' && onlyMarked !== 'false';
+
+    // 1. All checklist tasks
+    const [allTasks] = await db.query(`
+      SELECT t.*, m.code as module_code, m.title as module_title,
+             (
+               SELECT COUNT(DISTINCT tc.student_id)
+               FROM task_competency tc
+               JOIN students s ON s.id = tc.student_id
+               WHERE tc.task_id = t.id AND tc.competent = 1 AND s.batch_id = ? AND s.status = 'active'
+             ) as comp_count,
+             (
+               SELECT COUNT(DISTINCT cr.student_id)
+               FROM checklist_results cr
+               JOIN steps stp ON stp.id = cr.step_id
+               JOIN students s ON s.id = cr.student_id
+               WHERE stp.task_id = t.id AND cr.achieved = 1 AND s.batch_id = ? AND s.status = 'active'
+             ) as step_students_count
+      FROM tasks t
+      JOIN modules m ON m.id = t.module_id
+      WHERE m.has_checklist = 1
+      ORDER BY m.code ASC, t.sort_order ASC, t.id ASC
+    `, [batchId, batchId]);
+
+    const targetTasks = allTasks.filter(t => {
+      if (modFilterIds.length > 0 && !modFilterIds.includes(Number(t.module_id))) return false;
+      const isMarked = Number(t.comp_count) > 0 || Number(t.step_students_count) > 0;
+      if (onlyMarkedBool && !isMarked) return false;
+      return true;
+    });
+
+    if (targetTasks.length === 0) {
+      return res.status(404).send('No matching checklists found for the selected filter.');
+    }
+
+    // 2. Active students
+    const [students] = await db.query(
+      'SELECT id, reg_no, full_name, sort_order FROM students WHERE batch_id = ? AND status = "active" ORDER BY sort_order ASC, id ASC',
+      [batchId]
+    );
+    const studentIds = students.map(s => s.id);
+    const taskIds = targetTasks.map(t => t.id);
+
+    // 3. Steps for target tasks
+    const [allSteps] = await db.query(
+      `SELECT * FROM steps WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY task_id ASC, sort_order ASC, id ASC`,
+      taskIds
+    );
+    const stepsByTask = {};
+    const stepIds = [];
+    for (const stp of allSteps) {
+      if (!stepsByTask[stp.task_id]) stepsByTask[stp.task_id] = [];
+      stepsByTask[stp.task_id].push(stp);
+      stepIds.push(stp.id);
+    }
+
+    // 4. Checklist results
+    const resultsByTask = {};
+    if (studentIds.length > 0 && stepIds.length > 0) {
+      const [resRows] = await db.query(`
+        SELECT cr.student_id, cr.step_id, cr.attempt, cr.achieved, stp.task_id
+        FROM checklist_results cr
+        JOIN steps stp ON stp.id = cr.step_id
+        WHERE cr.student_id IN (${studentIds.map(() => '?').join(',')})
+          AND cr.step_id IN (${stepIds.map(() => '?').join(',')})
+      `, [...studentIds, ...stepIds]);
+
+      for (const r of resRows) {
+        if (!resultsByTask[r.task_id]) resultsByTask[r.task_id] = {};
+        if (!resultsByTask[r.task_id][r.student_id]) resultsByTask[r.task_id][r.student_id] = {};
+        if (!resultsByTask[r.task_id][r.student_id][r.step_id]) resultsByTask[r.task_id][r.student_id][r.step_id] = {};
+        resultsByTask[r.task_id][r.student_id][r.step_id][r.attempt] = Number(r.achieved) === 1;
+      }
+    }
+
+    // 5. Competencies
+    const compsByTask = {};
+    if (studentIds.length > 0 && taskIds.length > 0) {
+      const [compRows] = await db.query(`
+        SELECT task_id, student_id, competent, competent_date
+        FROM task_competency
+        WHERE task_id IN (${taskIds.map(() => '?').join(',')})
+          AND student_id IN (${studentIds.map(() => '?').join(',')})
+      `, [...taskIds, ...studentIds]);
+
+      for (const c of compRows) {
+        if (!compsByTask[c.task_id]) compsByTask[c.task_id] = {};
+        compsByTask[c.task_id][c.student_id] = {
+          competent: Number(c.competent) === 1,
+          date: c.competent_date
+        };
+      }
+    }
+
+    const [settingsRows] = await db.query('SELECT k, v FROM settings');
+    const settings = {};
+    settingsRows.forEach(r => { settings[r.k] = r.v; });
+
+    const tasksData = targetTasks.map(task => ({
+      task,
+      steps: stepsByTask[task.id] || [],
+      resultsMap: resultsByTask[task.id] || {},
+      compMap: compsByTask[task.id] || {}
+    }));
+
+    const modCodes = [...new Set(targetTasks.map(t => t.module_code))];
+    const titleLabel = modFilterIds.length > 0
+      ? `Modules ${modCodes.join(', ')} (${targetTasks.length} Checklists)`
+      : `All Marked Checklists (${targetTasks.length} Tasks)`;
+
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
+    const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+    const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
+
+    const html = renderBatchChecklists({
+      tasksData,
+      students,
+      settings,
+      paperSize,
+      legalHref,
+      a4Href,
+      pdfHref: pdfLink(req),
+      titleLabel
+    });
+
+    const outFilename = modFilterIds.length > 0
+      ? `Checklists_${modCodes.join('_')}_${paperSize.toUpperCase()}.pdf`
+      : `All_Marked_Checklists_${targetTasks.length}_Tasks_${paperSize.toUpperCase()}.pdf`;
+
+    const asAttachment = req.query.download === '1' || req.query.download === 'true';
+    return sendHtmlOrPdf(res, html, format, outFilename, asAttachment);
+  } catch (err) {
+    console.error('Batch print checklists error:', err);
+    res.status(500).send('Failed to generate batch checklists');
   }
 });
 

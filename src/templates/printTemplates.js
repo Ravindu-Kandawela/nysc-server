@@ -524,6 +524,212 @@ function renderChecklist({
 </html>`;
 }
 
+/**
+ * Render multiple tasks' checklists into a single multi-page HTML/PDF document
+ */
+function renderBatchChecklists({
+  tasksData = [],
+  students = [],
+  settings = {},
+  paperSize = 'legal',
+  legalHref = '#',
+  a4Href = '#',
+  pdfHref = '#',
+  titleLabel = 'All Marked Checklists'
+}) {
+  const isLegal = String(paperSize).toLowerCase() !== 'a4';
+  const maxPerPage = isLegal ? Math.max(students.length, 25) : CHECKLIST_MAX_PER_PAGE;
+  const groups = paginateStudents(students, maxPerPage);
+  const columns = Math.max(CHECKLIST_MIN_COLUMNS, ...groups.map(g => g.length));
+  const centre = settings.institute_name || 'Technical Training Centre – Akuressa';
+  const courseEn = settings.course_title_en_short || 'Information & Communication Technology Technician';
+  const denseCols = isLegal && columns > 15;
+
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const p = parts(d);
+    return `${p.dd}/${p.mm}/${String(p.y).slice(2)}`;
+  };
+
+  const renderTaskSheets = (tItem) => {
+    const { task, steps = [], resultsMap = {}, compMap = {} } = tItem;
+    const manySteps = steps.length > 6;
+
+    return groups.map((group, pageIdx) => {
+      const cols = group.slice();
+      while (cols.length < columns) cols.push(null);
+
+      const nameHeads = cols.map(s => {
+        if (!s) return '<th colspan="2" class="name"></th>';
+        const [a, b] = splitName(s.full_name);
+        return `<th colspan="2" class="name"><div class="vname">${esc(a)}${b ? '<br>' + esc(b) : ''}</div></th>`;
+      }).join('');
+      const attemptHeads = cols.map(() => '<th class="att">1</th><th class="att">2</th>').join('');
+
+      const stepRows = steps.map(step => {
+        const label = /^[A-Z]\d+\./.test(step.code || '') ? step.code : `${task.code}.${step.code}`;
+        const cells = cols.map(s => {
+          if (!s) return '<td></td><td></td>';
+          const r = (resultsMap[s.id] && resultsMap[s.id][step.id]) || {};
+          return `<td class="mk">${r[1] ? 'C' : ''}</td><td class="mk">${r[2] ? 'C' : ''}</td>`;
+        }).join('');
+        return `<tr class="step"><td class="st ${manySteps ? 'st-dense' : ''}">${esc(label)} ${esc(step.title)}</td>${cells}</tr>`;
+      }).join('');
+
+      const compCells = cols.map(s => {
+        const c = s && compMap[s.id];
+        if (c && c.competent && c.date) return `<td colspan="2" class="cd">${esc(fmtDate(c.date))}</td>`;
+        if (c && c.competent) return `<td colspan="2" class="mk">C</td>`;
+        return '<td></td><td></td>';
+      }).join('');
+
+      const pageNote = groups.length > 1
+        ? `<div class="pg-note">Page ${pageIdx + 1} of ${groups.length} (${esc(task.module_code)} · ${esc(task.code)})</div>` : '';
+
+      return `
+  <section class="sheet ${manySteps ? 'many-steps' : ''}">
+    <div class="fit">
+      <h1>${esc(courseEn)}</h1>
+      <div class="hrow">
+        <span>${esc(centre)}</span>
+        <span class="right-head">Continue Assessment Check List <span class="nvq">NVQ - 4</span></span>
+      </div>
+      <div class="hrow">
+        <span>Module Name :- ${esc(task.module_title)}</span>
+        <span class="taskno">Task No :- ${esc(task.code)}</span>
+      </div>
+      <div class="task-title">${esc(task.title)}</div>
+
+      <table class="grid">
+        <colgroup>
+          <col style="width:${denseCols ? '14.5%' : '17.5%'}">
+          ${cols.map(() => '<col><col>').join('')}
+        </colgroup>
+        <thead>
+          <tr class="names">
+            <th rowspan="2" class="diag"><span class="dn">Name</span><span class="ds">Step</span></th>
+            ${nameHeads}
+          </tr>
+          <tr class="atts">${attemptHeads}</tr>
+        </thead>
+        <tbody>
+          ${stepRows}
+          <tr class="comp"><td class="cl">Competent Date</td>${compCells}</tr>
+        </tbody>
+      </table>
+
+      <div class="sig">
+        <div><div>………………………..</div><div>Prepared by</div></div>
+        <div><div>………………………..</div><div>Approved&nbsp; by</div></div>
+      </div>
+      ${pageNote}
+    </div>
+  </section>`;
+    }).join('');
+  };
+
+  const pageSizeCss = isLegal
+    ? '@page { size: 355.6mm 215.9mm; margin: 9mm 10mm 7mm 20mm; }'
+    : '@page { size: A4 landscape; margin: 9mm 10mm 7mm 18mm; }';
+
+  const screenSheetCss = isLegal
+    ? '.sheet { width: 355.6mm; height: 215.9mm; padding: 9mm 10mm 7mm 20mm; overflow: hidden; margin: 0 auto 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.12); }'
+    : '.sheet { width: 297mm; height: 210mm; padding: 9mm 10mm 7mm 18mm; overflow: hidden; margin: 0 auto 14px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.12); }';
+
+  const fitWidthMm = isLegal ? 325.6 : 269;
+  const availHeightMm = isLegal ? 199 : 194;
+
+  const customToolbar = `
+  <div class="no-print no-print-bar">
+    <div>
+      <strong>Batch Checklists — ${esc(titleLabel)}</strong>
+      <span style="opacity:0.8; margin-left:8px;">(${tasksData.length} Tasks · ${students.length} Students · ${isLegal ? 'Legal 1-Page Format' : 'A4 Format'})</span>
+    </div>
+    <div style="display:flex; align-items:center;">
+      <span style="font-size:12px; color:#cbd5e1; margin-right:6px;">Paper Size:</span>
+      <a href="${legalHref}" class="btn" style="background:${isLegal ? '#2f6348' : '#334155'}; margin-left:4px;">Legal (1 Page/Task)</a>
+      <a href="${a4Href}" class="btn" style="background:${!isLegal ? '#2f6348' : '#334155'}; margin-left:4px;">A4 (2 Pages/Task)</a>
+      <button class="btn btn-secondary" onclick="window.print()">Print All (${tasksData.length})</button>
+      <a href="${pdfHref}" class="btn">Download Combined PDF</a>
+    </div>
+  </div>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${esc(titleLabel)} (${isLegal ? 'Legal' : 'A4'})</title>
+  <style>
+    ${pageSizeCss}
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #000; font-family: 'Times New Roman', Times, serif; font-weight: bold; }
+    @media screen { body { background: #e5e7eb; } ${screenSheetCss} }
+    .sheet { break-after: page; page-break-after: always; }
+    .sheet:last-of-type { break-after: auto; page-break-after: auto; }
+    .fit { width: ${fitWidthMm}mm; transform-origin: top left; }
+
+    h1 { text-align: center; font-size: ${denseCols ? '16.5pt' : '18pt'}; margin: 0 0 2.5mm; }
+    .hrow { display: flex; justify-content: space-between; font-size: ${denseCols ? '12pt' : '13pt'}; margin-bottom: 2.5mm; }
+    .right-head { padding-right: 15mm; }
+    .nvq { margin-left: 9mm; }
+    .taskno { padding-right: 31mm; }
+    .task-title { text-align: right; font-size: 11pt; margin: -3mm 6mm 3.5mm 0; }
+
+    table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-left: ${denseCols ? '0' : '2mm'}; width: ${denseCols ? '100%' : 'calc(100% - 2mm)'}; }
+    .grid th, .grid td { border: 0.75pt solid #555; padding: 0; }
+    .grid thead { display: table-header-group; }
+    .grid tr { break-inside: avoid; }
+    .names th { height: 31mm; vertical-align: bottom; }
+    .many-steps .names th { height: 27mm; }
+    .diag {
+      position: relative;
+      background: linear-gradient(to bottom left, transparent calc(50% - 0.6pt), #333 50%, transparent calc(50% + 0.6pt));
+    }
+    .diag .dn { position: absolute; top: 7mm; right: 7mm; font-size: ${denseCols ? '13.5pt' : '15pt'}; }
+    .diag .ds { position: absolute; bottom: 4mm; left: 8mm; font-size: ${denseCols ? '13.5pt' : '15pt'}; }
+    .vname {
+      writing-mode: vertical-rl; transform: rotate(180deg);
+      margin: 0 auto; padding: 1.5mm 0; font-size: ${denseCols ? '8.5pt' : '10.5pt'}; line-height: ${denseCols ? '1.05' : '1.15'}; white-space: nowrap;
+      text-align: left;
+    }
+    .att { font-size: ${denseCols ? '9pt' : '12pt'}; height: ${denseCols ? '6.5mm' : '9mm'}; vertical-align: middle; text-align: center; }
+    .st { font-size: 9.8pt; line-height: 1.12; padding: 0.4mm 1.5mm 0.6mm 2mm !important; vertical-align: top; text-align: left; }
+    .st-dense { font-size: 8.8pt; }
+    .mk { text-align: center; vertical-align: middle; font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif; font-size: ${denseCols ? '9.5pt' : '11pt'}; }
+    .comp td { height: 10.5mm; }
+    .many-steps .comp td { height: 8.5mm; }
+    .cl { text-align: center; font-size: ${denseCols ? '10pt' : '11pt'}; vertical-align: middle; }
+    .cd { text-align: center; vertical-align: middle; font-size: ${denseCols ? '6.6pt' : '8pt'}; white-space: nowrap; letter-spacing: ${denseCols ? '-0.2px' : '0'}; }
+
+    .sig { display: flex; justify-content: space-between; margin: ${denseCols ? '7mm' : '9mm'} 0 0; font-size: 11pt; text-align: center; padding: 0 12mm 0 14mm; }
+    .sig > div > div:first-child { margin-bottom: 1.5mm; }
+    .pg-note { text-align: right; font-size: 8pt; font-weight: normal; color: #444; margin-top: 1mm; }
+
+    ${TOOLBAR_CSS}
+  </style>
+</head>
+<body>
+  ${customToolbar}
+  ${tasksData.map(renderTaskSheets).join('\n')}
+  <script>
+    (function () {
+      var mm = 96 / 25.4, availH = ${availHeightMm} * mm, baseW = ${fitWidthMm} * mm;
+      document.querySelectorAll('.fit').forEach(function (el) {
+        for (var i = 0; i < 3; i++) {
+          var z = parseFloat(el.style.zoom || 1);
+          var h = el.getBoundingClientRect().height / z;
+          if (h <= availH) break;
+          var nz = Math.max(0.6, availH / h * z * 0.995);
+          el.style.zoom = nz;
+          el.style.width = (baseW / nz) + 'px';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 // =====================================================================
 // 3. OFFICIAL NVQ-4 LESSON PLAN & TEACHING RECORD
 //    Classic Institutional / Academic Typography (20mm Left Gutter)
@@ -1777,6 +1983,7 @@ function renderWorkPlan({
 module.exports = {
   renderMonthlyReport,
   renderChecklist,
+  renderBatchChecklists,
   renderLessonPlan,
   renderMonthlyCalendarPlan,
   renderWorkPlan,

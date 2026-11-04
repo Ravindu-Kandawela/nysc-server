@@ -306,7 +306,7 @@ function renderMonthlyReport({ batch, settings = {}, page1, page2, period, pdfHr
 }
 
 // =====================================================================
-// CONTINUE ASSESSMENT CHECK LIST — landscape, max 13 students per page
+// CONTINUE ASSESSMENT CHECK LIST — Legal (1-page all students) or A4 (max 13/page)
 // =====================================================================
 const CHECKLIST_MAX_PER_PAGE = 13;
 const CHECKLIST_MIN_COLUMNS = 12; // blank columns keep the sheet looking like the paper form
@@ -324,12 +324,26 @@ function paginateStudents(students, maxPerPage = CHECKLIST_MAX_PER_PAGE) {
   return out;
 }
 
-function renderChecklist({ task, steps, students, resultsMap = {}, compMap = {}, settings = {}, pdfHref = '#' }) {
-  const groups = paginateStudents(students);
+function renderChecklist({
+  task,
+  steps,
+  students,
+  resultsMap = {},
+  compMap = {},
+  settings = {},
+  paperSize = 'legal',
+  legalHref = '#',
+  a4Href = '#',
+  pdfHref = '#'
+}) {
+  const isLegal = String(paperSize).toLowerCase() !== 'a4';
+  const maxPerPage = isLegal ? Math.max(students.length, 25) : CHECKLIST_MAX_PER_PAGE;
+  const groups = paginateStudents(students, maxPerPage);
   const columns = Math.max(CHECKLIST_MIN_COLUMNS, ...groups.map(g => g.length));
   const centre = settings.institute_name || 'Technical Training Centre – Akuressa';
   const courseEn = settings.course_title_en_short || 'Information & Communication Technology Technician';
   const manySteps = steps.length > 6;
+  const denseCols = isLegal && columns > 15;
 
   const fmtDate = (d) => {
     if (!d) return '';
@@ -384,7 +398,7 @@ function renderChecklist({ task, steps, students, resultsMap = {}, compMap = {},
 
       <table class="grid">
         <colgroup>
-          <col style="width:17.5%">
+          <col style="width:${denseCols ? '14.5%' : '17.5%'}">
           ${cols.map(() => '<col><col>').join('')}
         </colgroup>
         <thead>
@@ -409,28 +423,54 @@ function renderChecklist({ task, steps, students, resultsMap = {}, compMap = {},
   </section>`;
   };
 
+  const pageSizeCss = isLegal
+    ? '@page { size: 355.6mm 215.9mm; margin: 7mm 8mm 6mm 8mm; }'
+    : '@page { size: A4 landscape; margin: 9mm 11mm 7mm 11mm; }';
+
+  const screenSheetCss = isLegal
+    ? '.sheet { width: 355.6mm; height: 215.9mm; padding: 7mm 8mm 6mm; overflow: hidden; }'
+    : '.sheet { width: 297mm; height: 210mm; padding: 9mm 11mm 7mm; overflow: hidden; }';
+
+  const fitWidthMm = isLegal ? 339.6 : 275;
+  const availHeightMm = isLegal ? 202 : 194;
+
+  const customToolbar = `
+  <div class="no-print no-print-bar">
+    <div>
+      <strong>Continue Assessment Check List — ${esc(task.code)} ${esc(task.title)}</strong>
+      <span style="opacity:0.8; margin-left:8px;">(${students.length} students · ${isLegal ? 'Legal 1-Page Format' : `A4 Format, ${groups.length} page${groups.length > 1 ? 's' : ''}`})</span>
+    </div>
+    <div style="display:flex; align-items:center;">
+      <span style="font-size:12px; color:#cbd5e1; margin-right:6px;">Paper Size:</span>
+      <a href="${legalHref}" class="btn" style="background:${isLegal ? '#059669' : '#334155'}; margin-left:4px;">📄 Legal (1 Page - All Names)</a>
+      <a href="${a4Href}" class="btn" style="background:${!isLegal ? '#059669' : '#334155'}; margin-left:4px;">📄 A4 (2 Pages - Classic)</a>
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+      <a href="${pdfHref}" class="btn">⬇️ Download PDF</a>
+    </div>
+  </div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Continue Assessment Check List - ${esc(task.code)}</title>
+  <title>Continue Assessment Check List (${isLegal ? 'Legal' : 'A4'}) - ${esc(task.code)}</title>
   <style>
-    @page { size: A4 landscape; margin: 9mm 11mm 7mm 11mm; }
+    ${pageSizeCss}
     * { box-sizing: border-box; }
     body { margin: 0; color: #000; font-family: 'Times New Roman', Times, serif; font-weight: bold; }
     .sheet { break-after: page; }
     .sheet:last-of-type { break-after: auto; }
-    @media screen { .sheet { width: 297mm; height: 210mm; padding: 9mm 11mm 7mm; overflow: hidden; } }
-    .fit { width: 275mm; transform-origin: top left; }
+    @media screen { ${screenSheetCss} }
+    .fit { width: ${fitWidthMm}mm; transform-origin: top left; }
 
-    h1 { text-align: center; font-size: 18pt; margin: 0 0 3mm; }
-    .hrow { display: flex; justify-content: space-between; font-size: 13pt; margin-bottom: 3mm; }
+    h1 { text-align: center; font-size: ${denseCols ? '16.5pt' : '18pt'}; margin: 0 0 2.5mm; }
+    .hrow { display: flex; justify-content: space-between; font-size: ${denseCols ? '12pt' : '13pt'}; margin-bottom: 2.5mm; }
     .right-head { padding-right: 15mm; }
     .nvq { margin-left: 9mm; }
     .taskno { padding-right: 31mm; }
-    .task-title { text-align: right; font-size: 11pt; margin: -3.5mm 6mm 4mm 0; }
+    .task-title { text-align: right; font-size: 11pt; margin: -3mm 6mm 3.5mm 0; }
 
-    table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-left: 4mm; width: calc(100% - 4mm); }
+    table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin-left: ${denseCols ? '0' : '4mm'}; width: ${denseCols ? '100%' : 'calc(100% - 4mm)'}; }
     .grid th, .grid td { border: 0.75pt solid #555; padding: 0; }
     .grid thead { display: table-header-group; }
     .grid tr { break-inside: avoid; }
@@ -439,21 +479,21 @@ function renderChecklist({ task, steps, students, resultsMap = {}, compMap = {},
       position: relative;
       background: linear-gradient(to bottom left, transparent calc(50% - 0.6pt), #333 50%, transparent calc(50% + 0.6pt));
     }
-    .diag .dn { position: absolute; top: 7mm; right: 7mm; font-size: 15pt; }
-    .diag .ds { position: absolute; bottom: 4mm; left: 8mm; font-size: 15pt; }
+    .diag .dn { position: absolute; top: 7mm; right: 7mm; font-size: ${denseCols ? '13.5pt' : '15pt'}; }
+    .diag .ds { position: absolute; bottom: 4mm; left: 8mm; font-size: ${denseCols ? '13.5pt' : '15pt'}; }
     .vname {
       writing-mode: vertical-rl; transform: rotate(180deg);
-      margin: 0 auto; padding: 1.5mm 0; font-size: 10.5pt; line-height: 1.15; white-space: nowrap;
+      margin: 0 auto; padding: 1.5mm 0; font-size: ${denseCols ? '8.5pt' : '10.5pt'}; line-height: ${denseCols ? '1.05' : '1.15'}; white-space: nowrap;
       text-align: left;
     }
-    .att { font-size: 12pt; height: 9mm; vertical-align: middle; text-align: center; }
-    .st { font-size: ${manySteps ? '9pt' : '10pt'}; line-height: 1.12; padding: 0.4mm 1.5mm 0.6mm 2mm !important; vertical-align: top; text-align: left; }
-    .mk { text-align: center; vertical-align: middle; font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif; font-size: 11pt; }
-    .comp td { height: ${manySteps ? '9mm' : '11mm'}; }
-    .cl { text-align: center; font-size: 11pt; vertical-align: middle; }
-    .cd { text-align: center; vertical-align: middle; font-size: 8pt; }
+    .att { font-size: ${denseCols ? '9pt' : '12pt'}; height: ${denseCols ? '6.5mm' : '9mm'}; vertical-align: middle; text-align: center; }
+    .st { font-size: ${manySteps ? '8.8pt' : '9.8pt'}; line-height: 1.12; padding: 0.4mm 1.5mm 0.6mm 2mm !important; vertical-align: top; text-align: left; }
+    .mk { text-align: center; vertical-align: middle; font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif; font-size: ${denseCols ? '9.5pt' : '11pt'}; }
+    .comp td { height: ${manySteps ? '8.5mm' : '10.5mm'}; }
+    .cl { text-align: center; font-size: ${denseCols ? '10pt' : '11pt'}; vertical-align: middle; }
+    .cd { text-align: center; vertical-align: middle; font-size: ${denseCols ? '6.6pt' : '8pt'}; white-space: nowrap; letter-spacing: ${denseCols ? '-0.2px' : '0'}; }
 
-    .sig { display: flex; justify-content: space-between; margin: 9mm 0 0; font-size: 11pt; text-align: center; padding: 0 12mm 0 14mm; }
+    .sig { display: flex; justify-content: space-between; margin: ${denseCols ? '7mm' : '9mm'} 0 0; font-size: 11pt; text-align: center; padding: 0 12mm 0 14mm; }
     .sig > div > div:first-child { margin-bottom: 1.5mm; }
     .pg-note { text-align: right; font-size: 8pt; font-weight: normal; color: #444; margin-top: 1mm; }
 
@@ -461,12 +501,12 @@ function renderChecklist({ task, steps, students, resultsMap = {}, compMap = {},
   </style>
 </head>
 <body>
-  ${toolbar(`Continue Assessment Check List — ${esc(task.code)} ${esc(task.title)} (${students.length} students, ${groups.length} page${groups.length > 1 ? 's' : ''})`, pdfHref)}
+  ${customToolbar}
   ${groups.map(sheet).join('')}
   <script>
-    // Auto-fit: shrink a sheet only if its content is taller than one A4 landscape page
+    // Auto-fit: shrink a sheet only if its content is taller than one landscape page
     (function () {
-      var mm = 96 / 25.4, availH = 194 * mm, baseW = 275 * mm;
+      var mm = 96 / 25.4, availH = ${availHeightMm} * mm, baseW = ${fitWidthMm} * mm;
       document.querySelectorAll('.fit').forEach(function (el) {
         for (var i = 0; i < 3; i++) {
           var z = parseFloat(el.style.zoom || 1);

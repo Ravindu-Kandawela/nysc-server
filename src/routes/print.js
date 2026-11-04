@@ -51,15 +51,17 @@ router.get('/monthly-report', optionalAuth, async (req, res) => {
 
 // -------------------------------------------------------------
 // 2. OFFICIAL CONTINUE ASSESSMENT CHECK LIST (Check List A format)
-//    Students are split evenly over pages, max 13 per page (26 → 13 + 13)
-// GET /api/print/checklist?batchId=&taskId=&format=html|pdf
+//    Supports paperSize=legal (all students on 1 Legal landscape sheet)
+//    or paperSize=a4 (classic A4 landscape, max 13 students per page)
+// GET /api/print/checklist?batchId=&taskId=&paperSize=legal|a4&format=html|pdf
 // -------------------------------------------------------------
 router.get('/checklist', optionalAuth, async (req, res) => {
   try {
-    const { batchId, taskId, format = 'html' } = req.query;
+    const { batchId, taskId, format = 'html', paperSize: rawPaperSize = 'legal' } = req.query;
     if (!batchId || !taskId) {
       return res.status(400).send('batchId and taskId are required');
     }
+    const paperSize = String(rawPaperSize).toLowerCase() === 'a4' ? 'a4' : 'legal';
 
     // Task details
     const [tasks] = await db.query(`
@@ -124,11 +126,19 @@ router.get('/checklist', optionalAuth, async (req, res) => {
     const settings = {};
     settingsRows.forEach(r => { settings[r.k] = r.v; });
 
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
+    const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+    const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
+
     const html = renderChecklist({
       task, steps, students, resultsMap, compMap, settings,
+      paperSize,
+      legalHref,
+      a4Href,
       pdfHref: pdfLink(req)
     });
-    return sendHtmlOrPdf(res, html, format, `checklist_${task.code}.pdf`);
+    return sendHtmlOrPdf(res, html, format, `checklist_${task.code}_${paperSize}.pdf`);
   } catch (err) {
     console.error('Print checklist error:', err);
     res.status(500).send('Failed to generate checklist print view');

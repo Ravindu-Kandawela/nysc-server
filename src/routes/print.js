@@ -237,7 +237,7 @@ async function getMonthlyCalendarData(batchId, targetYear, targetMonth) {
               const text = s.topic_text || (s.task_code ? `${s.module_code} - ${s.task_code}: ${s.task_title || s.module_title}` : `${s.module_code}: ${s.module_title}`);
               const isAssign = text.toLowerCase().includes('assignment') || s.kind === 'assessment';
               const isPract = text.toLowerCase().includes('practical');
-              return `<div class="topic-line">${text}${isAssign ? ' <span class="tag-assign">Assignment</span>' : ''}${isPract ? ' <span class="tag-act">Practical</span>' : ''}</div>`;
+              return `<div class="topic-line">${text}${isAssign ? ' <span class="tag-assign">(Assignment)</span>' : ''}${isPract ? ' <span class="tag-act">(Practical)</span>' : ''}</div>`;
             }).join('');
           } else if (dl && dl.reason) {
             contentHtml = `<div class="topic-line">${dl.reason}</div>`;
@@ -401,23 +401,28 @@ router.get('/timetable', optionalAuth, async (req, res) => {
   <meta charset="UTF-8">
   <title>Monthly Timetable - ${batch.name} (${displayFrom} to ${displayTo})</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700&family=Inter:wght@400;600;700&display=swap');
-    * { box-sizing: border-box; }
+    @page {
+      size: A4 landscape;
+      margin: 10mm 12mm 10mm 20mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body {
-      font-family: 'Noto Sans Sinhala', 'Inter', sans-serif;
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', 'Nirmala UI', serif;
       margin: 0;
       padding: 0;
-      color: #0f172a;
+      color: #000;
       font-size: 9.5pt;
     }
     .page {
-      padding: 12mm 15mm;
-      margin: 0 auto;
+      padding: 10mm 12mm 10mm 20mm;
+      margin: 14px auto;
+      max-width: 297mm;
       background: white;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22);
     }
     @media print {
       body { margin: 0; }
-      .page { padding: 5mm; }
+      .page { padding: 0; margin: 0; max-width: none; box-shadow: none; }
       .no-print { display: none !important; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
@@ -432,6 +437,7 @@ router.get('/timetable', optionalAuth, async (req, res) => {
       position: sticky;
       top: 0;
       z-index: 1000;
+      font-family: 'Segoe UI', Arial, sans-serif;
     }
     .btn {
       background: #2563eb;
@@ -449,77 +455,68 @@ router.get('/timetable', optionalAuth, async (req, res) => {
     .btn-secondary { background: #475569; }
     .header-block {
       text-align: center;
-      border-bottom: 2px solid #0f172a;
-      padding-bottom: 10px;
-      margin-bottom: 12px;
+      border-bottom: 2pt double #000;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
     }
     .header-block h2 {
-      margin: 0 0 3px 0;
-      font-size: 15pt;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+      margin: 0 0 2px 0;
+      font-size: 13.5pt;
+      font-weight: bold;
+      letter-spacing: 0.4px;
     }
     .header-block h3 {
-      margin: 0 0 4px 0;
-      font-size: 12pt;
-      font-weight: 600;
-      color: #334155;
+      margin: 0 0 3px 0;
+      font-size: 11pt;
+      font-weight: bold;
+      color: #222;
     }
     .header-block h4 {
       margin: 0;
-      font-size: 11pt;
-      font-weight: 700;
-      color: #1e3a8a;
+      font-size: 11.5pt;
+      font-weight: bold;
+      color: #000;
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
-    .meta-box {
-      display: flex;
-      justify-content: space-between;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      padding: 8px 14px;
-      margin-bottom: 12px;
-      font-size: 9pt;
-      font-weight: 600;
-    }
-    table {
+    .meta-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 6px;
+      margin-bottom: 10px;
+      font-size: 9pt;
     }
-    th, td {
-      border: 1px solid #334155;
-      padding: 5px 7px;
+    .meta-table td {
+      border: 0.75pt solid #222;
+      padding: 4px 8px;
+      background: #fafafa;
+    }
+    table.sched-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+    }
+    table.sched-table th, table.sched-table td {
+      border: 0.75pt solid #111;
+      padding: 4.5px 6px;
       vertical-align: middle;
     }
-    th {
-      background: #e2e8f0;
-      font-weight: 700;
+    table.sched-table th {
+      background: #eaecef;
+      font-weight: bold;
       text-align: center;
       font-size: 9pt;
     }
     .center { text-align: center; }
     .right { text-align: right; }
-    .bold { font-weight: 700; }
-    .tag {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 8pt;
-      font-weight: 600;
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-    }
-    .tag-theory { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
-    .tag-practical { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-    .tag-mixed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .bold { font-weight: bold; }
+    .num { font-family: 'Times New Roman', Times, serif; }
     .footer-block {
       display: flex;
       justify-content: space-between;
-      margin-top: 35px;
+      margin-top: 28px;
       page-break-inside: avoid;
-      font-size: 9pt;
-      line-height: 1.6;
+      font-size: 9.2pt;
+      line-height: 1.55;
     }
     .sign-box { width: 45%; }
   </style>
@@ -531,7 +528,7 @@ router.get('/timetable', optionalAuth, async (req, res) => {
     </div>
     <div>
       <button class="btn btn-secondary" onclick="window.print()">🖨️ Print Timetable</button>
-      <a href="/api/print/timetable?batchId=${batchId}&from=${from || ''}&to=${to || ''}&format=pdf" class="btn">⬇️ Download PDF</a>
+      <a href="/api/print/timetable?batchId=${batchId}&from=${from || ''}&to=${to || ''}&layout=list&format=pdf" class="btn">⬇️ Download PDF</a>
     </div>
   </div>
 
@@ -539,33 +536,31 @@ router.get('/timetable', optionalAuth, async (req, res) => {
     <div class="header-block">
       <h2>ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL</h2>
       <h3>${settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස'} / Technical Training Centre – Akuressa</h3>
-      <h4>මාසික කාලසටහන — MONTHLY TIMETABLE & LESSON SCHEDULE</h4>
+      <h4>මාසික කාලසටහන — MONTHLY TIMETABLE &amp; LESSON SCHEDULE</h4>
     </div>
 
-    <div class="meta-box">
-      <div>
-        <span>පාඨමාලාව / Course:</span> ${settings.course_title || batch.name}<br>
-        <span>කාණ්ඩය / Batch:</span> ${batch.name} (NVQ Level 4)
-      </div>
-      <div>
-        <span>කාල සීමාව / Period:</span> ${displayFrom} සිට ${displayTo} දක්වා<br>
-        <span>දෛනික වේලාව / Daily Time:</span> 09:00 AM – 04:00 PM (පැය 6.5)
-      </div>
-      <div style="text-align: right;">
-        <span>ඉගැන්වීම් දින / Days:</span> ${sessionRows.length} දින<br>
-        <span>මුළු පැය / Total Hours:</span> ${totalHours} h (ඉලක්කය: 120h)
-      </div>
-    </div>
+    <table class="meta-table">
+      <tr>
+        <td><strong>පාඨමාලාව / Course :-</strong> ${settings.course_title || batch.name}</td>
+        <td><strong>කාල සීමාව / Period :-</strong> <span class="num">${displayFrom}</span> සිට <span class="num">${displayTo}</span> දක්වා</td>
+        <td><strong>ඉගැන්වීම් දින / Days :-</strong> <span class="num">${sessionRows.length}</span> දින</td>
+      </tr>
+      <tr>
+        <td><strong>කාණ්ඩය / Batch :-</strong> ${batch.name} (NVQ Level 4)</td>
+        <td><strong>දෛනික වේලාව / Daily Time :-</strong> <span class="num">09:00 AM – 04:00 PM</span></td>
+        <td><strong>මුළු පැය / Total Hours :-</strong> <strong class="num">${totalHours} Hrs</strong> (ඉලක්කය: 120h)</td>
+      </tr>
+    </table>
 
-    <table>
+    <table class="sched-table">
       <thead>
         <tr>
-          <th style="width: 4%;">#</th>
+          <th style="width: 4%;">අංකය</th>
           <th style="width: 11%;">දිනය (Date)</th>
-          <th style="width: 11%;">දවස (Day)</th>
+          <th style="width: 12%;">දවස (Day)</th>
           <th style="width: 11%;">වේලාව (Time)</th>
           <th style="width: 14%;">මොඩියුලය (Module)</th>
-          <th style="width: 33%;">මාතෘකාව / කාර්යය (Topic / Tasks Covered)</th>
+          <th style="width: 32%;">මාතෘකාව / කාර්යය (Topic / Tasks Covered)</th>
           <th style="width: 9%;">ක්‍රමය (Mode)</th>
           <th style="width: 7%;">පැය (Hrs)</th>
         </tr>
@@ -573,41 +568,39 @@ router.get('/timetable', optionalAuth, async (req, res) => {
       <tbody>
         ${sessionRows.length === 0 ? '<tr><td colspan="8" class="center">මෙම කාලසීමාව සඳහා කාලසටහනක් නොමැත</td></tr>' : sessionRows.map(s => `
           <tr>
-            <td class="center font-bold">${s.index}</td>
-            <td class="center bold">${s.sdate}</td>
-            <td class="center">${s.dayNameSi} <span style="font-size: 7.5pt; color: #64748b;">(${s.dayNameEn})</span></td>
-            <td class="center">09:00 - 16:00</td>
-            <td><strong>${s.module_code}</strong> <div style="font-size: 7.5pt; color: #475569;">${s.module_title}</div></td>
+            <td class="center bold num">${s.index}</td>
+            <td class="center bold num">${s.sdate}</td>
+            <td class="center">${s.dayNameSi} <span style="font-size: 7.5pt; color: #333;">(${s.dayNameEn})</span></td>
+            <td class="center num">09:00 - 16:00</td>
+            <td><strong class="num">${s.module_code}</strong> <div style="font-size: 7.8pt; color: #222;">${s.module_title}</div></td>
             <td>${s.topic_text || s.module_title}</td>
-            <td class="center">
-              <span class="tag ${s.kind === 'theory' ? 'tag-theory' : s.kind === 'practical' ? 'tag-practical' : 'tag-mixed'}">
-                ${s.kind === 'theory' ? 'න්‍යායාත්මක' : s.kind === 'practical' ? 'ප්‍රායෝගික' : 'මිශ්‍ර / Mixed'}
-              </span>
+            <td class="center" style="font-size: 8.5pt; font-style: italic;">
+              ${s.kind === 'theory' ? 'න්‍යායාත්මක' : s.kind === 'practical' ? 'ප්‍රායෝගික' : 'න්‍යායාත්මක / ප්‍රායෝගික'}
             </td>
-            <td class="center bold">${s.hours} h</td>
+            <td class="center bold num">${s.hours}</td>
           </tr>
         `).join('')}
-        <tr style="font-weight: bold; background: #f8fafc;">
-          <td colspan="7" class="right">මුළු සැලසුම් කළ ඉගැන්වීම් පැය ගණන (Total Planned Hours for Period):</td>
-          <td class="center" style="font-size: 10pt; color: #1e3a8a;">${totalHours} h</td>
+        <tr style="font-weight: bold; background: #eaecef;">
+          <td colspan="7" class="right">මුළු සැලසුම් කළ ඉගැන්වීම් පැය ගණන (Total Planned Hours for Period) :-</td>
+          <td class="center num" style="font-size: 10pt;">${totalHours}</td>
         </tr>
       </tbody>
     </table>
 
     <div class="footer-block">
       <div class="sign-box">
-        <strong>සැකසුවේ (Prepared by Instructor):</strong><br><br>
-        අත්සන: ..............................................................<br>
-        නම: ${settings.teacher_name || 'ICT Instructor'}<br>
-        තනතුර: ${settings.teacher_designation || 'ICT Instructor'}<br>
-        දුරකථන: ${settings.teacher_phone || ''}
+        <strong>ඉදිරිපත් කළේ (Prepared by Instructor) :-</strong><br><br>
+        අත්සන :- ..............................................................<br>
+        නම :- ${settings.teacher_name || 'R.Kandawela'}<br>
+        තනතුර :- ${settings.teacher_designation || 'ICT Instructor'}<br>
+        දුරකථන :- ${settings.teacher_phone || ''}
       </div>
 
       <div class="sign-box" style="text-align: right;">
-        <strong>අනුමත කළේ (Approved by Centre In-Charge):</strong><br><br>
-        අත්සන: ..............................................................<br>
-        නම: ${settings.center_in_charge_name || 'යූ.එම්.ආර්. නිරෝෂා'}<br>
-        තනතුර: ${settings.center_in_charge_title || 'මධ්‍යස්ථාන භාර නිලධාරී'}<br>
+        <strong>අනුමත කළේ (Approved by Centre In-Charge) :-</strong><br><br>
+        අත්සන :- ..............................................................<br>
+        නම :- ${settings.center_in_charge_name || 'යූ.එම්.ආර්. නිරෝෂා'}<br>
+        තනතුර :- ${settings.center_in_charge_title || 'මධ්‍යස්ථාන භාර නිලධාරී'}<br>
         තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස
       </div>
     </div>

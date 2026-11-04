@@ -526,14 +526,16 @@ function renderChecklist({
 
 // =====================================================================
 // 3. OFFICIAL NVQ-4 LESSON PLAN & TEACHING RECORD
+//    Classic Institutional / Academic Typography (20mm Left Gutter)
 // =====================================================================
 function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modules = [], totals = {}, pdfHref = '#', moduleId = null }) {
-  const teacherName = settings.teacher_name || 'ICT Instructor';
+  const teacherName = settings.teacher_name || 'R.Kandawela';
   const teacherDesig = settings.teacher_designation || 'ICT Instructor';
   const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
   const approverTitle = settings.center_in_charge_title || DEFAULT_APPROVER_TITLE;
   const centreName = settings.institute_name || 'Technical Training Centre – Akuressa';
   const centreSi = settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
+  const courseName = settings.course_title || 'Information & Communication Technology Technician (ICTT)';
 
   // Filter modules if a specific moduleId was chosen
   const displayModules = moduleId ? modules.filter(m => m.module_id === Number(moduleId)) : modules;
@@ -542,22 +544,25 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Lesson Plan NVQ-4 - ${esc(batch.name)} - ${esc(settings.course_title || 'ICT Technician')}</title>
+  <title>Lesson Plan NVQ-4 - ${esc(batch.name)} - ${esc(courseName)}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Sinhala:wght@400;600;700&display=swap');
-    * { box-sizing: border-box; }
+    @page {
+      size: A4 portrait;
+      margin: 12mm 12mm 12mm 20mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      margin: 0; padding: 0; color: #0f172a; font-size: 10pt; background: #f8fafc;
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', 'Nirmala UI', serif;
+      margin: 0; padding: 0; color: #111; font-size: 9.8pt; line-height: 1.38;
     }
     .page {
-      max-width: 210mm; margin: 20px auto; background: white; padding: 16mm 18mm;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-radius: 4px;
+      max-width: 210mm; margin: 18px auto; background: #fff; padding: 12mm 12mm 12mm 20mm;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22);
     }
     @media print {
-      body { background: white; }
+      body { background: #fff; }
       .page {
-        max-width: none; margin: 0; padding: 10mm 12mm; box-shadow: none; border-radius: 0;
+        max-width: none; margin: 0; padding: 0; box-shadow: none;
       }
       .no-print { display: none !important; }
       .page-break { page-break-before: always; }
@@ -565,111 +570,216 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
       tr { break-inside: avoid; }
     }
 
+    /* Classic Double-Rule Institutional Header */
     .header-box {
-      text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;
+      text-align: center;
+      border-bottom: 2.2pt double #111;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
     }
-    .header-org { font-size: 12pt; font-weight: 800; letter-spacing: 0.8px; color: #0f172a; text-transform: uppercase; }
-    .header-sub { font-size: 10pt; font-weight: 600; color: #475569; margin-top: 2px; }
+    .header-org {
+      font-size: 12.5pt;
+      font-weight: bold;
+      letter-spacing: 0.4px;
+      color: #000;
+    }
+    .header-sub {
+      font-size: 10.5pt;
+      font-weight: bold;
+      color: #222;
+      margin-top: 2px;
+    }
     .header-title {
-      font-size: 14pt; font-weight: 800; color: #1e3a8a; margin-top: 6px; letter-spacing: 0.3px;
+      font-size: 13.5pt;
+      font-weight: bold;
+      color: #000;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
-    .header-badge {
-      display: inline-block; background: #e0e7ff; color: #3730a3; padding: 2px 10px; border-radius: 999px;
-      font-size: 8.5pt; font-weight: 700; margin-top: 4px;
+    .header-ncs {
+      font-size: 9.2pt;
+      font-style: italic;
+      color: #333;
+      margin-top: 3px;
     }
 
-    .meta-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;
+    /* Formal Specification Table instead of web cards */
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+      font-size: 9pt;
     }
-    .meta-card {
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px;
+    .spec-table td {
+      border: 0.75pt solid #333;
+      padding: 4px 8px;
+      vertical-align: middle;
     }
-    .meta-lbl { font-size: 7.5pt; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.5px; }
-    .meta-val { font-size: 11pt; font-weight: 800; color: #0f172a; margin-top: 2px; }
-    .meta-val.highlight { color: #059669; }
+    .spec-table td.lbl {
+      background: #f3f4f6;
+      font-weight: bold;
+      width: 18%;
+      color: #111;
+    }
+    .spec-table td.val {
+      width: 32%;
+      color: #000;
+    }
 
     .section-title {
-      font-size: 11pt; font-weight: 800; color: #0f172a; border-left: 4px solid #2563eb;
-      padding-left: 8px; margin: 18px 0 10px 0; text-transform: uppercase; letter-spacing: 0.4px;
+      font-size: 10.5pt;
+      font-weight: bold;
+      color: #000;
+      border-bottom: 1pt solid #222;
+      padding-bottom: 2px;
+      margin: 14px 0 8px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
     }
 
     /* Modules overview table */
     .table-overview {
-      width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 24px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.8pt;
+      margin-bottom: 18px;
     }
     .table-overview th, .table-overview td {
-      border: 1px solid #cbd5e1; padding: 5px 7px; vertical-align: middle;
+      border: 0.75pt solid #333;
+      padding: 4.5px 6px;
+      vertical-align: middle;
     }
-    .table-overview th { background: #f1f5f9; font-weight: 700; text-align: center; color: #334155; }
-    .table-overview td.c { text-align: center; }
+    .table-overview th {
+      background: #eaecef;
+      font-weight: bold;
+      text-align: center;
+      color: #000;
+    }
+    .table-overview td.c { text-align: center; font-family: 'Times New Roman', Times, serif; }
     .table-overview td.r { text-align: right; }
-    .table-overview tr:nth-child(even) td { background: #fafbfc; }
-    .badge {
-      display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 7.5pt;
-    }
-    .badge-done { background: #dcfce7; color: #166534; }
-    .badge-prog { background: #fef3c7; color: #92400e; }
-    .badge-sched { background: #f1f5f9; color: #475569; }
 
-    /* Module unit block */
+    /* Module unit block — Classic Framed Sheet */
     .mod-card {
-      border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 22px; overflow: hidden;
+      border: 1pt solid #222;
+      margin-bottom: 18px;
       break-inside: avoid;
+      background: #fff;
     }
     .mod-hdr {
-      background: #0f172a; color: white; padding: 10px 14px;
-      display: flex; justify-content: space-between; align-items: center;
+      background: #eaecef;
+      color: #000;
+      border-bottom: 1pt solid #222;
+      padding: 6px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
     }
     .mod-code {
-      font-size: 12pt; font-weight: 800; color: #60a5fa; margin-right: 8px;
+      font-size: 11pt;
+      font-weight: bold;
+      margin-right: 6px;
+      font-family: 'Times New Roman', Times, serif;
     }
-    .mod-name { font-size: 11pt; font-weight: 700; }
+    .mod-name {
+      font-size: 10.5pt;
+      font-weight: bold;
+    }
     .mod-hours {
-      font-size: 9pt; font-weight: 700; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px;
+      font-size: 8.8pt;
+      font-weight: bold;
+      font-family: 'Times New Roman', Times, serif;
     }
-    .mod-body { padding: 12px 14px; background: white; }
+    .mod-body { padding: 8px 10px; }
     .mod-goal {
-      background: #eff6ff; border-left: 3px solid #3b82f6; padding: 8px 12px; border-radius: 0 4px 4px 0;
-      font-size: 8.5pt; line-height: 1.45; color: #1e3a8a; margin-bottom: 12px;
+      border-left: 2pt solid #333;
+      padding: 3px 8px;
+      font-size: 8.8pt;
+      line-height: 1.38;
+      color: #111;
+      margin-bottom: 8px;
+      background: #fafafa;
     }
-    .mod-goal strong { color: #1e40af; }
 
     /* Sessions table */
     .session-tbl {
-      width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-top: 8px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+      margin-top: 6px;
     }
     .session-tbl th, .session-tbl td {
-      border: 1px solid #e2e8f0; padding: 6px 8px; vertical-align: top;
+      border: 0.75pt solid #444;
+      padding: 4.5px 6px;
+      vertical-align: top;
     }
     .session-tbl th {
-      background: #f8fafc; font-weight: 700; color: #475569; text-align: left;
+      background: #f3f4f6;
+      font-weight: bold;
+      color: #000;
+      text-align: left;
     }
-    .session-tbl td.c { text-align: center; }
-    .session-no { font-weight: 800; color: #1e3a8a; white-space: nowrap; }
-    .session-topics { list-style: disc; margin: 3px 0 0 16px; padding: 0; font-size: 8pt; color: #334155; }
-    .session-topics li { margin-bottom: 2px; }
+    .session-tbl td.c {
+      text-align: center;
+      font-family: 'Times New Roman', Times, serif;
+    }
+    .session-no {
+      font-weight: bold;
+      color: #000;
+    }
+    .session-topics {
+      list-style: circle;
+      margin: 2px 0 0 15px;
+      padding: 0;
+      font-size: 8.2pt;
+      color: #111;
+    }
+    .session-topics li { margin-bottom: 1.5px; }
     .session-act {
-      background: #f0fdf4; border-left: 2px solid #22c55e; padding: 4px 6px; border-radius: 0 3px 3px 0;
-      font-size: 7.8pt; color: #15803d; margin-top: 4px;
+      border-top: 0.5pt dotted #777;
+      padding-top: 3px;
+      font-size: 8pt;
+      font-style: italic;
+      color: #111;
+      margin-top: 4px;
     }
 
     .mod-extras {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 8pt;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 8pt;
     }
     .extra-box {
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 10px;
+      border: 0.75pt solid #555;
+      padding: 5px 8px;
+      background: #fcfcfc;
     }
-    .extra-box strong { color: #334155; display: block; margin-bottom: 3px; font-size: 8pt; text-transform: uppercase; }
-    .extra-box ul { margin: 0 0 0 14px; padding: 0; color: #475569; }
+    .extra-box strong {
+      color: #000;
+      display: block;
+      margin-bottom: 2px;
+      font-size: 8pt;
+      text-decoration: underline;
+    }
+    .extra-box ul { margin: 0 0 0 14px; padding: 0; color: #222; }
 
     /* Sign-off */
     .sig-block {
-      display: flex; justify-content: space-between; margin-top: 36px; padding-top: 16px;
-      border-top: 1px solid #cbd5e1; break-inside: avoid; font-size: 9pt;
+      display: flex;
+      justify-content: space-between;
+      margin-top: 26px;
+      padding-top: 10px;
+      border-top: 1pt solid #222;
+      break-inside: avoid;
+      font-size: 9.2pt;
     }
-    .sig-box { width: 45%; }
-    .sig-box p { margin: 3px 0; }
-    .sig-line { border-bottom: 1px dotted #64748b; height: 32px; margin-bottom: 8px; }
+    .sig-box { width: 44%; }
+    .sig-box p { margin: 2.5px 0; }
+    .sig-line { border-bottom: 0.75pt dotted #222; height: 26px; margin-bottom: 6px; }
 
     ${TOOLBAR_CSS}
   </style>
@@ -679,115 +789,108 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
 
   <div class="page">
     <div class="header-box">
-      <div class="header-org">ජාතික තරුණ සේවා සභාව — National Youth Services Council</div>
+      <div class="header-org">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL</div>
       <div class="header-sub">${esc(centreSi)} / ${esc(centreName)}</div>
-      <div class="header-title">LESSON PLAN &amp; TEACHING HOURS RECORD</div>
-      <div class="header-badge">NVQ Level 4 · ICT Technician · National Competency Standard (NCS: K72S004)</div>
+      <div class="header-title">MASTER LESSON PLAN &amp; TEACHING HOURS RECORD</div>
+      <div class="header-ncs">${esc(courseName)} · NVQ Level 4 · National Competency Standard (NCS: ${esc(batch.ncs_code || 'K72S004')})</div>
     </div>
 
-    <div class="meta-grid">
-      <div class="meta-card">
-        <div class="meta-lbl">Batch / Intake</div>
-        <div class="meta-val">${esc(batch.name)}</div>
-      </div>
-      <div class="meta-card">
-        <div class="meta-lbl">Curriculum Hours</div>
-        <div class="meta-val">${totals.curriculumHours || 720} h</div>
-      </div>
-      <div class="meta-card">
-        <div class="meta-lbl">Hours Taught</div>
-        <div class="meta-val highlight">${totals.delivered || 0} h</div>
-      </div>
-      <div class="meta-card">
-        <div class="meta-lbl">Completion</div>
-        <div class="meta-val highlight">${totals.planned > 0 ? Math.round(((totals.delivered || 0) / totals.planned) * 100) : 0}%</div>
-      </div>
-    </div>
+    <table class="spec-table">
+      <tr>
+        <td class="lbl">Batch / Intake :-</td>
+        <td class="val"><strong>${esc(batch.name)}</strong></td>
+        <td class="lbl">Curriculum Hours :-</td>
+        <td class="val"><strong>${totals.curriculumHours || 720} Hours</strong> (16 Competency Units)</td>
+      </tr>
+      <tr>
+        <td class="lbl">Instructor :-</td>
+        <td class="val">${esc(teacherName)} (${esc(teacherDesig)})</td>
+        <td class="lbl">Progress to Date :-</td>
+        <td class="val"><strong>${totals.delivered || 0} / ${totals.planned || 720} Hours Taught</strong> (${totals.planned > 0 ? Math.round(((totals.delivered || 0) / totals.planned) * 100) : 0}%)</td>
+      </tr>
+    </table>
 
     ${!moduleId ? `
-    <div class="section-title">1. Curriculum Overview &amp; Teaching Hours Progress</div>
+    <div class="section-title">Part I — Curriculum Modules &amp; Hour Allocation Summary</div>
     <table class="table-overview">
       <thead>
         <tr>
-          <th style="width: 6%;">Code</th>
-          <th style="width: 38%;">Module Title</th>
+          <th style="width: 7%;">Code</th>
+          <th style="width: 39%;">Module / Competency Unit Title</th>
           <th style="width: 9%;">Theory</th>
           <th style="width: 9%;">Practical</th>
           <th style="width: 9%;">Total</th>
-          <th style="width: 10%;">Planned</th>
-          <th style="width: 10%;">Taught</th>
-          <th style="width: 9%;">Status</th>
+          <th style="width: 9%;">Planned</th>
+          <th style="width: 9%;">Taught</th>
+          <th style="width: 9%;">Remarks</th>
         </tr>
       </thead>
       <tbody>
         ${modules.map(m => {
           const pct = m.plannedHours > 0 ? Math.round((m.deliveredHours / m.plannedHours) * 100) : 0;
-          const statusBadge = pct >= 100
-            ? '<span class="badge badge-done">Completed</span>'
-            : pct > 0
-            ? `<span class="badge badge-prog">${pct}% Taught</span>`
-            : '<span class="badge badge-sched">Scheduled</span>';
+          const statusTxt = pct >= 100 ? 'Completed' : pct > 0 ? `${pct}% Done` : 'Scheduled';
           return `
           <tr>
             <td class="c"><strong>${esc(m.code)}</strong></td>
-            <td><strong>${esc(m.title)}</strong></td>
-            <td class="c">${m.theory_hours}h</td>
-            <td class="c">${m.practical_hours}h</td>
-            <td class="c font-bold"><strong>${m.total_hours}h</strong></td>
-            <td class="c">${m.plannedHours}h</td>
-            <td class="c font-bold" style="color: #059669;">${m.deliveredHours}h</td>
-            <td class="c">${statusBadge}</td>
+            <td>${esc(m.title)}</td>
+            <td class="c">${m.theory_hours}</td>
+            <td class="c">${m.practical_hours}</td>
+            <td class="c"><strong>${m.total_hours}</strong></td>
+            <td class="c">${m.plannedHours}</td>
+            <td class="c"><strong>${m.deliveredHours}</strong></td>
+            <td class="c" style="font-size:8pt;font-style:${pct === 0 ? 'italic' : 'normal'};">${statusTxt}</td>
           </tr>`;
         }).join('')}
-        <tr style="font-weight: 800; background: #f1f5f9;">
-          <td colspan="2" style="text-align: right; padding-right: 12px;">Total Hours:</td>
-          <td class="c">${modules.reduce((a,m)=>a+m.theory_hours,0)}h</td>
-          <td class="c">${modules.reduce((a,m)=>a+m.practical_hours,0)}h</td>
-          <td class="c">${totals.curriculumHours || 720}h</td>
-          <td class="c">${totals.planned || 720}h</td>
-          <td class="c" style="color: #059669;">${totals.delivered || 0}h</td>
+        <tr style="font-weight: bold; background: #eaecef;">
+          <td colspan="2" style="text-align: right; padding-right: 10px;">Total Curriculum Hours :-</td>
+          <td class="c">${modules.reduce((a,m)=>a+m.theory_hours,0)}</td>
+          <td class="c">${modules.reduce((a,m)=>a+m.practical_hours,0)}</td>
+          <td class="c">${totals.curriculumHours || 720}</td>
+          <td class="c">${totals.planned || 720}</td>
+          <td class="c">${totals.delivered || 0}</td>
           <td class="c">${totals.planned > 0 ? Math.round(((totals.delivered || 0) / totals.planned) * 100) : 0}%</td>
         </tr>
       </tbody>
     </table>
     ` : ''}
 
-    <div class="section-title">2. Module Lesson Plans &amp; Practical Session Breakdowns</div>
+    <div class="section-title">Part II — Detailed Module Lesson Plans &amp; Practical Schemes</div>
 
     ${displayModules.map((m, idx) => `
       <div class="mod-card ${idx > 0 && !moduleId ? 'page-break' : ''}">
         <div class="mod-hdr">
           <div>
-            <span class="mod-code">${esc(m.code)}</span>
+            <span class="mod-code">${esc(m.code)} :</span>
             <span class="mod-name">${esc(m.unit_title || m.title)}</span>
           </div>
           <div class="mod-hours">
-            Duration: ${m.total_hours} Hours · Taught: ${m.deliveredHours || 0} Hours
+            [ Theory: ${m.theory_hours}h | Practical: ${m.practical_hours}h | Total: ${m.total_hours}h | Taught: ${m.deliveredHours || 0}h ]
           </div>
         </div>
 
         <div class="mod-body">
           <div class="mod-goal">
-            <strong>Goal / Competency:</strong> ${esc(m.goal || 'To equip learners with essential skills and practical competencies.')}
+            <strong>Learning Outcome / Competency Goal :-</strong> ${esc(m.goal || 'To equip trainees with standard competencies and practical workplace skills required under NVQ Level 4.')}
           </div>
 
           <table class="session-tbl">
             <thead>
               <tr>
-                <th style="width: 22%;">Session &amp; Focus</th>
-                <th style="width: 50%;">Topics Covered &amp; Practical Activity</th>
-                <th style="width: 14%; text-align: center;">Planned Hrs</th>
-                <th style="width: 14%; text-align: center;">Taught Hrs</th>
+                <th style="width: 24%;">Session No. &amp; Focus Area</th>
+                <th style="width: 52%;">Topics Covered &amp; Practical Laboratory Assignment</th>
+                <th style="width: 12%; text-align: center;">Allocated (Hrs)</th>
+                <th style="width: 12%; text-align: center;">Completed (Hrs)</th>
               </tr>
             </thead>
             <tbody>
               ${m.sessions.length === 0 ? `
-                <tr><td colspan="4" class="c" style="color: #64748b; padding: 12px;">Standard curriculum topics scheduled for this module.</td></tr>
+                <tr><td colspan="4" class="c" style="color: #444; padding: 10px;">Standard curriculum topics scheduled for this module.</td></tr>
               ` : m.sessions.map(s => `
                 <tr>
                   <td>
                     <div class="session-no">Session ${s.session_no}: ${esc(s.title)}</div>
-                    ${s.focus ? `<div style="font-size: 7.5pt; color: #64748b; margin-top: 2px;"><strong>Focus:</strong> ${esc(s.focus)}</div>` : ''}
+                    ${s.focus ? `<div style="font-size: 7.8pt; color: #333; margin-top: 2px;"><em>Focus: ${esc(s.focus)}</em></div>` : ''}
+                    ${s.firstDate ? `<div style="font-size: 7.5pt; color: #444; margin-top: 2px; font-family: 'Times New Roman', serif;">Date: ${esc(s.firstDate)}${s.lastDate && s.lastDate !== s.firstDate ? ' – ' + esc(s.lastDate) : ''}</div>` : ''}
                   </td>
                   <td>
                     ${s.topics && s.topics.length ? `
@@ -797,12 +900,12 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
                     ` : ''}
                     ${s.activity ? `
                       <div class="session-act">
-                        <strong>Practical Activity:</strong> ${esc(s.activity)}
+                        <strong>Practical Exercise :-</strong> ${esc(s.activity)}
                       </div>
                     ` : ''}
                   </td>
-                  <td class="c"><strong>${s.hours} h</strong></td>
-                  <td class="c" style="color: #059669; font-weight: 700;">${s.deliveredHours || 0} h</td>
+                  <td class="c"><strong>${fmtHours(s.hours)}</strong></td>
+                  <td class="c"><strong>${fmtHours(s.deliveredHours || 0)}</strong></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -810,16 +913,16 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
 
           <div class="mod-extras">
             <div class="extra-box">
-              <strong>Resource Checklist:</strong>
+              <strong>Instructional Resources &amp; Equipment :-</strong>
               ${m.resources && m.resources.length ? `
                 <ul>${m.resources.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-              ` : '<span style="color:#94a3b8;">Standard lab computers and peripherals</span>'}
+              ` : '<span>Standard computer laboratory facilities and tools</span>'}
             </div>
             <div class="extra-box">
-              <strong>Assessment Methods:</strong>
+              <strong>Competency Assessment Criteria :-</strong>
               ${m.assessment && m.assessment.length ? `
                 <ul>${m.assessment.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
-              ` : '<span style="color:#94a3b8;">Formative assessment, practical test, and competency checklist</span>'}
+              ` : '<span>Practical demonstration, continuous assessment &amp; checklist evaluation</span>'}
             </div>
           </div>
         </div>
@@ -828,18 +931,18 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
 
     <div class="sig-block">
       <div class="sig-box">
-        <strong>Prepared by (Instructor):</strong>
+        <strong>Prepared by (Course Instructor) :-</strong>
         <div class="sig-line"></div>
-        <p><strong>Name:</strong> ${esc(teacherName)}</p>
-        <p><strong>Designation:</strong> ${esc(teacherDesig)}</p>
-        <p><strong>Date:</strong> ....................................................</p>
+        <p>Name :- ${esc(teacherName)}</p>
+        <p>Designation :- ${esc(teacherDesig)}</p>
+        <p>Date :- ....................................................</p>
       </div>
-      <div class="sig-box" style="text-align: right;">
-        <strong style="display: block; text-align: right;">Approved by (Centre In-Charge):</strong>
+      <div class="sig-box">
+        <strong>Checked &amp; Approved by (Centre In-Charge) :-</strong>
         <div class="sig-line"></div>
-        <p><strong>Name:</strong> ${esc(approverName)}</p>
-        <p><strong>Designation:</strong> ${esc(approverTitle)}</p>
-        <p><strong>Date:</strong> ....................................................</p>
+        <p>Name :- ${esc(approverName)}</p>
+        <p>Designation :- ${esc(approverTitle)}</p>
+        <p>Date &amp; Official Seal :- ....................................</p>
       </div>
     </div>
   </div>
@@ -848,7 +951,8 @@ function renderLessonPlan({ batch, settings = {}, version, weeklyHours = 0, modu
 }
 
 // =====================================================================
-// MONTHLY PLAN CALENDAR (5-Column Mon-Fri Grid) — matches Monthly Plan October.pdf
+// MONTHLY PLAN CALENDAR (5-Column Mon-Fri Grid)
+// Classic Editorial / Institutional Typography (20mm Left Gutter)
 // =====================================================================
 function renderMonthlyCalendarPlan({
   batch,
@@ -872,8 +976,8 @@ function renderMonthlyCalendarPlan({
   const monthNameEn = MONTH_NAMES_EN[mIdx];
   const monthNameSi = MONTH_NAMES_SI[mIdx];
 
-  const teacherName = settings.teacher_name || '';
-  const teacherDesig = settings.teacher_designation || 'Instructor (ICT)';
+  const teacherName = settings.teacher_name || 'R.Kandawela';
+  const teacherDesig = settings.teacher_designation || 'Computer Instructor';
   const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
   const approverTitle = settings.approver_title || DEFAULT_APPROVER_TITLE;
   const centreName = settings.centre_name_si || settings.form_centre_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
@@ -884,38 +988,36 @@ function renderMonthlyCalendarPlan({
   <meta charset="UTF-8">
   <title>Monthly Plan - ${monthNameEn} ${year} - ${esc(batch.name)}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Sinhala:wght@400;600;700&display=swap');
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     @page {
       size: A4 landscape;
-      margin: 6mm 8mm;
+      margin: 8mm 10mm 8mm 20mm;
     }
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', serif;
       margin: 0;
       padding: 0;
-      color: #0f172a;
-      background: #f1f5f9;
+      color: #000;
       font-size: 8.5pt;
     }
     .page {
-      width: 285mm;
-      min-height: 198mm;
-      margin: 10px auto;
-      background: white;
-      padding: 8mm 10mm;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 297mm;
+      min-height: 210mm;
+      margin: 14px auto;
+      background: #fff;
+      padding: 8mm 10mm 8mm 20mm;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
     @media print {
-      body { background: white; }
+      body { background: #fff; }
       .page {
         width: 100%;
         min-height: auto;
         margin: 0;
-        padding: 4mm 6mm;
+        padding: 0;
         box-shadow: none;
       }
       .no-print { display: none !important; }
@@ -924,35 +1026,38 @@ function renderMonthlyCalendarPlan({
     }
     ${TOOLBAR_CSS}
 
-    /* Header styling from Monthly Plan October.pdf */
+    /* Classic Institutional Header */
     .plan-header {
-      margin-bottom: 6px;
+      margin-bottom: 5px;
       text-align: center;
     }
+    .plan-header .org-line {
+      font-size: 10.5pt;
+      font-weight: bold;
+      color: #111;
+      letter-spacing: 0.3px;
+    }
     .plan-header .title-main {
-      font-size: 17pt;
-      font-weight: 800;
-      letter-spacing: 0.8px;
+      font-size: 15.5pt;
+      font-weight: bold;
+      letter-spacing: 1px;
       text-transform: uppercase;
-      color: #0f172a;
-      margin: 0 0 4px 0;
+      color: #000;
+      margin: 2px 0 4px 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
     .meta-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 12px;
-      border-top: 1.5px solid #0f172a;
-      border-bottom: 1.5px solid #0f172a;
-      font-size: 11pt;
-      font-weight: 700;
-      color: #0f172a;
-      margin-top: 4px;
-    }
-    .meta-bar span {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      padding: 3.5px 10px;
+      border-top: 1.5pt solid #000;
+      border-bottom: 1pt solid #000;
+      font-size: 9.8pt;
+      font-weight: bold;
+      color: #000;
+      background: #f5f5f5;
     }
 
     /* 5-Column Grid */
@@ -961,174 +1066,152 @@ function renderMonthlyCalendarPlan({
       border-collapse: collapse;
       table-layout: fixed;
       margin-top: 4px;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     .cal-table th {
-      background: #e2e8f0;
-      color: #0f172a;
-      border: 1.5px solid #0f172a;
-      padding: 6px 4px;
-      font-size: 10.5pt;
-      font-weight: 800;
+      background: #eaecef;
+      color: #000;
+      border: 1pt solid #000;
+      padding: 5px 4px;
+      font-size: 10pt;
+      font-weight: bold;
       text-align: center;
       width: 20%;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .cal-table td {
-      border: 1.5px solid #0f172a;
+      border: 1pt solid #111;
       vertical-align: top;
       padding: 4px 5px;
-      height: 25mm;
+      height: 24.5mm;
       overflow: hidden;
       background: #ffffff;
     }
 
     /* Cell Variants */
     .cell-empty {
-      background: #f8fafc !important;
-      border: 1.5px solid #cbd5e1 !important;
+      background: #f9fafb !important;
+      border: 1pt solid #888 !important;
     }
     .cell-before {
-      background: #f8fafc;
-      color: #94a3b8;
+      background: #fafafa;
+      color: #555;
     }
     .cell-top {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: baseline;
       margin-bottom: 3px;
-      border-bottom: 1px dashed #e2e8f0;
-      padding-bottom: 2px;
+      border-bottom: 0.6pt dotted #666;
+      padding-bottom: 1.5px;
     }
     .day-num {
+      font-family: 'Times New Roman', Times, serif;
       font-size: 10.5pt;
-      font-weight: 800;
-      color: #0f172a;
+      font-weight: bold;
+      color: #000;
       line-height: 1;
     }
     .day-hrs {
-      font-size: 7.5pt;
-      font-weight: 700;
-      color: #0284c7;
-      background: #e0f2fe;
-      padding: 1px 4px;
-      border-radius: 3px;
-      line-height: 1;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 7.8pt;
+      font-weight: bold;
+      color: #111;
+      border: 0.5pt solid #444;
+      padding: 0.5px 4px;
+      background: #f3f4f6;
+      line-height: 1.1;
     }
 
     /* Cell Content */
     .cell-body {
       font-size: 7.8pt;
-      line-height: 1.25;
-      color: #1e293b;
+      line-height: 1.24;
+      color: #000;
+      font-family: 'Calibri', 'Segoe UI', 'Iskoola Pota', sans-serif;
     }
     .topic-line {
-      margin-bottom: 3px;
-      font-weight: 600;
+      margin-bottom: 2.5px;
+      font-weight: 500;
     }
     .topic-line strong {
-      color: #0f172a;
+      color: #000;
     }
-    .tag-act {
-      display: inline-block;
+    .tag-act, .tag-assign, .tag-software {
+      font-style: italic;
+      font-weight: bold;
       font-size: 7pt;
-      font-weight: 700;
-      padding: 1px 4px;
-      border-radius: 3px;
-      background: #f1f5f9;
-      color: #475569;
-      margin-top: 2px;
-    }
-    .tag-software {
-      background: #dbeafe;
-      color: #1d4ed8;
-      font-weight: 700;
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 7pt;
-    }
-    .tag-assign {
-      background: #fef3c7;
-      color: #b45309;
-      font-weight: 700;
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 7pt;
-      display: inline-block;
-      margin-top: 2px;
+      color: #222;
     }
 
-    /* Holidays */
+    /* Holidays — Classic Shaded Paper Cell (no emojis) */
     .cell-holiday {
-      background: #fff1f2 !important;
-      border-color: #be123c !important;
-    }
-    .cell-holiday .day-num {
-      color: #be123c;
+      background: #f3f4f6 !important;
     }
     .holiday-box {
-      color: #be123c;
-      font-weight: 700;
+      color: #000;
+      font-family: 'Book Antiqua', 'Times New Roman', serif;
+      font-weight: bold;
+      font-style: italic;
       font-size: 8.5pt;
       line-height: 1.3;
-      margin-top: 4px;
+      margin-top: 6px;
       text-align: center;
-      padding: 4px 2px;
-    }
-    .holiday-icon {
-      font-size: 11pt;
-      display: block;
-      margin-bottom: 2px;
+      padding: 4px 3px;
+      border: 0.5pt dashed #555;
+      background: #fff;
     }
 
-    /* Footer styling from Monthly Plan October.pdf */
+    /* Footer styling */
     .plan-footer {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      padding-top: 6px;
-      border-top: 1.5px solid #0f172a;
-      margin-top: 4px;
-      font-size: 8.5pt;
+      padding-top: 5px;
+      border-top: 1.5pt double #000;
+      margin-top: 3px;
+      font-size: 8.8pt;
     }
     .ftr-course {
-      font-size: 11pt;
-      font-weight: 800;
-      color: #0f172a;
-      letter-spacing: 0.5px;
+      font-size: 10.5pt;
+      font-weight: bold;
+      color: #000;
     }
     .ftr-year-month {
-      font-size: 9.5pt;
-      font-weight: 700;
-      color: #334155;
+      font-size: 9pt;
+      font-weight: bold;
+      color: #222;
       margin-top: 1px;
     }
     .ftr-stats {
       font-size: 8pt;
-      color: #64748b;
-      margin-top: 2px;
+      color: #333;
+      margin-top: 1px;
+      font-style: italic;
     }
 
     .sig-container {
       display: flex;
-      gap: 36px;
+      gap: 32mm;
     }
     .sig-col {
       min-width: 55mm;
       text-align: left;
     }
     .sig-line {
-      border-bottom: 1px dotted #0f172a;
-      height: 16px;
-      margin-bottom: 4px;
+      border-bottom: 0.75pt dotted #000;
+      height: 15px;
+      margin-bottom: 3px;
     }
     .sig-name {
-      font-size: 8.5pt;
-      font-weight: 700;
-      color: #0f172a;
+      font-size: 8.8pt;
+      font-weight: bold;
+      color: #000;
     }
     .sig-desig {
-      font-size: 7.5pt;
-      color: #475569;
+      font-size: 7.8pt;
+      color: #333;
     }
   </style>
 </head>
@@ -1138,21 +1221,24 @@ function renderMonthlyCalendarPlan({
   <div class="page">
     <div>
       <div class="plan-header">
-        <h1 class="title-main">Monthly Plan</h1>
+        <div class="org-line">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreName)}</div>
+        <h1 class="title-main">Monthly Training Schedule &amp; Lesson Plan</h1>
         <div class="meta-bar">
+          <span>COURSE: ICT TECHNICIAN (NVQ LEVEL 4)</span>
+          <span>BATCH: ${esc(batch.name)}</span>
           <span>YEAR: ${year}</span>
-          <span>MONTH: ${monthNameEn.toUpperCase()}</span>
+          <span>MONTH: ${monthNameEn.toUpperCase()} (${monthNameSi})</span>
         </div>
       </div>
 
       <table class="cal-table">
         <thead>
           <tr>
-            <th>Mon</th>
-            <th>Tue</th>
-            <th>Wed</th>
-            <th>Thu</th>
-            <th>Fri</th>
+            <th>Monday</th>
+            <th>Tuesday</th>
+            <th>Wednesday</th>
+            <th>Thursday</th>
+            <th>Friday</th>
           </tr>
         </thead>
         <tbody>
@@ -1168,10 +1254,9 @@ function renderMonthlyCalendarPlan({
                     <td class="cell-holiday">
                       <div class="cell-top">
                         <span class="day-num">${cell.day}</span>
-                        <span class="day-hrs" style="background:#ffe4e6;color:#be123c;">Holiday</span>
+                        <span class="day-hrs">HOLIDAY</span>
                       </div>
                       <div class="holiday-box">
-                        <span class="holiday-icon">🌕</span>
                         ${esc(cell.holidayName)}
                       </div>
                     </td>
@@ -1183,9 +1268,10 @@ function renderMonthlyCalendarPlan({
                     <td class="cell-before">
                       <div class="cell-top">
                         <span class="day-num">${cell.day}</span>
+                        <span class="day-hrs">OFF</span>
                       </div>
-                      <div style="font-size:7.5pt;color:#b45309;font-weight:600;padding-top:4px;">
-                        ⚠️ ${esc(cell.closureReason || 'Centre Closed')}
+                      <div style="font-size:8pt;color:#222;font-style:italic;text-align:center;padding-top:6px;">
+                        [ ${esc(cell.closureReason || 'Centre Closed')} ]
                       </div>
                     </td>
                   `;
@@ -1197,8 +1283,8 @@ function renderMonthlyCalendarPlan({
                       <div class="cell-top">
                         <span class="day-num">${cell.day}</span>
                       </div>
-                      <div style="font-size:7.5pt;color:#94a3b8;padding-top:4px;">
-                        Prior to batch start
+                      <div style="font-size:7.5pt;color:#666;font-style:italic;padding-top:4px;">
+                        Prior to batch commencement
                       </div>
                     </td>
                   `;
@@ -1208,7 +1294,7 @@ function renderMonthlyCalendarPlan({
                   <td>
                     <div class="cell-top">
                       <span class="day-num">${cell.day}</span>
-                      ${cell.hours ? `<span class="day-hrs">${cell.hours}h</span>` : ''}
+                      ${cell.hours ? `<span class="day-hrs">${cell.hours} Hrs</span>` : ''}
                     </div>
                     <div class="cell-body">
                       ${cell.contentHtml}
@@ -1224,23 +1310,23 @@ function renderMonthlyCalendarPlan({
 
     <div class="plan-footer">
       <div>
-        <div class="ftr-course">ICTT – NVQ 4</div>
-        <div class="ftr-year-month">${year} · ${monthNameEn.toUpperCase()}</div>
+        <div class="ftr-course">ICTT – NVQ Level 4 (${esc(batch.name)})</div>
+        <div class="ftr-year-month">${monthNameEn} ${year} — ${totals.teachingDays || 0} Teaching Days · ${totals.totalHours || 0} Scheduled Hours</div>
         <div class="ftr-stats">
-          ${batch.name} · ${totals.teachingDays || 0} Teaching Days · ${totals.totalHours || 0} Scheduled Hours
+          Technical Training Centre – Akuressa · National Youth Services Council
         </div>
       </div>
 
       <div class="sig-container">
         <div class="sig-col">
           <div class="sig-line"></div>
-          <div class="sig-name">Prepared by: ${esc(teacherName || 'Course Instructor')}</div>
+          <div class="sig-name">Prepared by :- ${esc(teacherName || 'Course Instructor')}</div>
           <div class="sig-desig">${esc(teacherDesig)}</div>
         </div>
 
         <div class="sig-col">
           <div class="sig-line"></div>
-          <div class="sig-name">Approved by: ${esc(approverName || 'Centre In-Charge')}</div>
+          <div class="sig-name">Approved by :- ${esc(approverName || 'Centre In-Charge')}</div>
           <div class="sig-desig">${esc(approverTitle)}</div>
         </div>
       </div>
@@ -1252,7 +1338,8 @@ function renderMonthlyCalendarPlan({
 
 // =====================================================================
 // MASTER TRAINING WORK PLAN (GANTT CHART) — NVQ LEVEL 4
-// Supports A4 Landscape and Legal Landscape with 20mm Left Punch Gutter
+// Classic Engineering / TVEC Institutional Schedule Style (A4 & Legal)
+// Includes 20mm Left Binding/Punch Gutter
 // =====================================================================
 function renderWorkPlan({
   batch = {},
@@ -1277,6 +1364,7 @@ function renderWorkPlan({
   const approverName = settings.center_in_charge_name || settings.approver_name || DEFAULT_APPROVER;
   const approverTitle = settings.center_in_charge_title || DEFAULT_APPROVER_TITLE;
   const centreSi = settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
+  const centreEn = settings.institute_name || 'Technical Training Centre – Akuressa';
 
   const months = gantt.months || [];
   const weeks = gantt.weeks || [];
@@ -1284,27 +1372,27 @@ function renderWorkPlan({
   const shortDate = (ymd) => {
     if (!ymd) return '-';
     const [y, m, d] = String(ymd).slice(0, 10).split('-');
-    return `${y.slice(2)}.${m}.${d}`;
+    return `${d}.${m}.${y.slice(2)}`;
   };
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Master Work Plan (Gantt Chart) — ${esc(batch.name)} (${isLegal ? 'Legal' : 'A4'})</title>
+  <title>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)} (${isLegal ? 'Legal' : 'A4'})</title>
   <style>
     /* 20mm left binding/punch gutter */
     @page {
-      size: ${isLegal ? 'legal landscape' : 'A4 landscape'};
+      size: ${isLegal ? '355.6mm 215.9mm' : 'A4 landscape'};
       margin: 8mm 8mm 8mm 20mm;
     }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body {
       margin: 0;
       padding: 0;
-      color: #0f172a;
-      font-family: 'Segoe UI', 'Iskoola Pota', 'Nirmala UI', Arial, sans-serif;
-      font-size: ${isLegal ? '7.8pt' : '7pt'};
+      color: #000;
+      font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', serif;
+      font-size: ${isLegal ? '8pt' : '7.2pt'};
     }
     ${TOOLBAR_CSS}
     .sheet {
@@ -1318,178 +1406,205 @@ function renderWorkPlan({
       }
     }
 
-    .wp-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      border-bottom: 2px solid #0f172a;
-      padding-bottom: 5px;
-      margin-bottom: 6px;
+    /* Classic Official Title Masthead */
+    .wp-masthead {
+      text-align: center;
+      border-bottom: 2pt double #000;
+      padding-bottom: 4px;
+      margin-bottom: 5px;
     }
-    .wp-title-block h1 {
-      margin: 0;
-      font-size: ${isLegal ? '12.5pt' : '11.5pt'};
-      font-weight: 800;
-      color: #0f172a;
-      letter-spacing: 0.3px;
+    .wp-masthead .org-title {
+      font-size: ${isLegal ? '11pt' : '10pt'};
+      font-weight: bold;
+      letter-spacing: 0.4px;
+      color: #000;
     }
-    .wp-title-block h2 {
-      margin: 1px 0 0;
-      font-size: ${isLegal ? '9.5pt' : '8.8pt'};
-      font-weight: 700;
-      color: #1e3a8a;
+    .wp-masthead .doc-title {
+      font-size: ${isLegal ? '13.5pt' : '12.5pt'};
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 1px 0;
+      text-decoration: underline;
+      text-underline-offset: 2.5px;
     }
-    .wp-title-block p {
-      margin: 1px 0 0;
-      font-size: 7.5pt;
-      color: #475569;
-      font-weight: 600;
-    }
-
-    .wp-meta-grid {
-      display: grid;
-      grid-template-columns: repeat(4, auto);
-      gap: 3px 14px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
-    }
-    .wp-meta-grid div strong {
-      color: #0f172a;
+    .wp-masthead .course-sub {
+      font-size: ${isLegal ? '8.8pt' : '8pt'};
+      font-weight: bold;
+      color: #222;
     }
 
+    /* Formal Bordered Specification Strip */
+    .wp-spec-strip {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 5px;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: ${isLegal ? '8pt' : '7.3pt'};
+    }
+    .wp-spec-strip td {
+      border: 0.75pt solid #000;
+      padding: 2.5px 6px;
+      background: #fafafa;
+    }
+    .wp-spec-strip td strong {
+      font-weight: bold;
+      color: #000;
+    }
+
+    /* Classic Gantt Schedule Table */
     .gantt-table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      margin-top: 4px;
+      font-family: 'Calibri', 'Arial', sans-serif;
     }
     .gantt-table th, .gantt-table td {
-      border: 0.6pt solid #475569;
+      border: 0.75pt solid #111;
       padding: ${isLegal ? '2.5px 3px' : '2px 2px'};
       vertical-align: middle;
       overflow: hidden;
     }
     .gantt-table thead th {
-      background: #f1f5f9;
-      color: #0f172a;
-      font-weight: 700;
+      background: #eaecef;
+      color: #000;
+      font-family: 'Times New Roman', Times, serif;
+      font-weight: bold;
       text-align: center;
-      font-size: ${isLegal ? '7pt' : '6.3pt'};
+      font-size: ${isLegal ? '7.4pt' : '6.6pt'};
       line-height: 1.15;
     }
     .gantt-table thead tr.month-row th.month-hdr {
-      background: #1e293b;
-      color: #ffffff;
-      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
+      background: #d5d9e0;
+      color: #000;
+      font-size: ${isLegal ? '7.8pt' : '7pt'};
+      text-transform: uppercase;
       letter-spacing: 0.3px;
       padding: 2.5px 2px;
+      border-left: 1.2pt solid #000;
     }
     .gantt-table thead tr.week-row th.wk-hdr {
-      background: #e2e8f0;
-      font-size: ${isLegal ? '6.2pt' : '5.6pt'};
+      background: #f3f4f6;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: ${isLegal ? '6.4pt' : '5.8pt'};
       padding: 1.5px 1px;
+    }
+    .gantt-table thead tr.week-row th.wk-hdr.month-start {
+      border-left: 1.2pt solid #000;
     }
     .wk-dates {
       display: block;
-      font-size: ${isLegal ? '5.2pt' : '4.7pt'};
-      font-weight: 600;
-      color: #475569;
+      font-size: ${isLegal ? '5.2pt' : '4.6pt'};
+      font-weight: normal;
+      color: #222;
       white-space: nowrap;
     }
 
-    .col-no { width: 5.5mm; text-align: center; font-weight: 700; }
-    .col-code { width: ${isLegal ? '12mm' : '10.5mm'}; text-align: center; font-weight: 800; }
-    .col-title { width: ${isLegal ? '58mm' : '46mm'}; text-align: left; }
-    .col-hrs { width: ${isLegal ? '15mm' : '13.5mm'}; text-align: center; font-size: ${isLegal ? '6.6pt' : '6pt'}; }
-    .col-done { width: ${isLegal ? '10mm' : '9mm'}; text-align: center; font-weight: 700; }
-    .col-dates { width: ${isLegal ? '22mm' : '19.5mm'}; text-align: center; font-size: ${isLegal ? '6.2pt' : '5.6pt'}; white-space: nowrap; }
-    .col-days { width: ${isLegal ? '7.5mm' : '6.5mm'}; text-align: center; font-weight: 700; }
+    .col-no { width: 5.5mm; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-code { width: ${isLegal ? '12mm' : '10.5mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-title { width: ${isLegal ? '60mm' : '47mm'}; text-align: left; }
+    .col-hrs { width: ${isLegal ? '15mm' : '13.5mm'}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${isLegal ? '7pt' : '6.3pt'}; }
+    .col-done { width: ${isLegal ? '10mm' : '8.8mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-dates { width: ${isLegal ? '22mm' : '19.5mm'}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${isLegal ? '6.5pt' : '5.8pt'}; white-space: nowrap; }
+    .col-days { width: ${isLegal ? '7.5mm' : '6.5mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
 
     .mod-title-main {
-      font-weight: 700;
-      color: #0f172a;
-      font-size: ${isLegal ? '7.3pt' : '6.6pt'};
+      font-family: 'Book Antiqua', 'Times New Roman', serif;
+      font-weight: bold;
+      color: #000;
+      font-size: ${isLegal ? '7.6pt' : '6.8pt'};
       line-height: 1.15;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .mod-sub-meta {
-      font-size: ${isLegal ? '5.8pt' : '5.3pt'};
-      color: #475569;
+      font-family: 'Times New Roman', serif;
+      font-style: italic;
+      font-size: ${isLegal ? '6pt' : '5.4pt'};
+      color: #333;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .g-cell {
-      padding: 1px !important;
+      padding: 1.2px !important;
       text-align: center;
       position: relative;
-      height: ${isLegal ? '7.4mm' : '6.8mm'};
+      height: ${isLegal ? '7.4mm' : '6.7mm'};
     }
     .g-cell.month-start {
-      border-left: 1.1pt solid #1e293b;
+      border-left: 1.2pt solid #000;
     }
+
+    /* Classic Print-Friendly Gantt Bars (Clean on both B&W and Color Printers) */
     .g-bar {
       width: 100%;
       height: 100%;
-      min-height: ${isLegal ? '5.6mm' : '5mm'};
-      border-radius: 2px;
+      min-height: ${isLegal ? '5.4mm' : '4.8mm'};
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-size: ${isLegal ? '6pt' : '5.3pt'};
-      font-weight: 800;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: ${isLegal ? '6.3pt' : '5.5pt'};
+      font-weight: bold;
       line-height: 1;
     }
+    /* Completed: Deep Classic Ink Charcoal/Forest */
     .g-bar-done {
-      background: #10b981;
+      background: #2c3e35;
       color: #ffffff;
-      border: 0.5pt solid #047857;
+      border: 0.75pt solid #000;
     }
+    /* In Progress: Classic Hatched / Double-Framed Bar */
     .g-bar-partial {
-      background: linear-gradient(90deg, #10b981 55%, #3b82f6 55%);
-      color: #ffffff;
-      border: 0.5pt solid #1d4ed8;
+      background: repeating-linear-gradient(
+        -45deg,
+        #d1d5db,
+        #d1d5db 3px,
+        #ffffff 3px,
+        #ffffff 6px
+      );
+      color: #000;
+      border: 1pt solid #000;
     }
+    /* Planned: Classic Framed Light Grey Tint */
     .g-bar-planned {
-      background: #dbeafe;
-      color: #1e40af;
-      border: 0.5pt solid #3b82f6;
+      background: #dfe3e8;
+      color: #000;
+      border: 0.75pt solid #222;
     }
 
     .tot-row td {
-      background: #f1f5f9;
-      font-weight: 800;
-      font-size: ${isLegal ? '6.6pt' : '6pt'};
+      background: #eaecef;
+      font-family: 'Times New Roman', Times, serif;
+      font-weight: bold;
+      font-size: ${isLegal ? '7pt' : '6.2pt'};
       text-align: center;
+      border-top: 1.2pt solid #000;
+      border-bottom: 1.2pt solid #000;
     }
 
     .wp-footer {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-top: 6px;
-      padding-top: 4px;
-      border-top: 1px solid #94a3b8;
-      font-size: ${isLegal ? '7.5pt' : '6.8pt'};
+      margin-top: 7px;
+      padding-top: 5px;
+      font-family: 'Book Antiqua', 'Times New Roman', serif;
+      font-size: ${isLegal ? '8pt' : '7.3pt'};
     }
     .legend-items {
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-weight: 600;
+      gap: 14px;
+      font-weight: bold;
     }
     .lg-box {
       display: inline-block;
-      width: 11px;
-      height: 11px;
-      border-radius: 2px;
+      width: 13px;
+      height: 9px;
       vertical-align: middle;
       margin-right: 4px;
     }
@@ -1498,29 +1613,29 @@ function renderWorkPlan({
       gap: 28mm;
     }
     .sig-block {
-      min-width: 52mm;
+      min-width: 55mm;
     }
     .sig-line {
-      border-bottom: 1px dotted #0f172a;
-      height: 14px;
-      margin-bottom: 2px;
+      border-bottom: 0.75pt dotted #000;
+      height: 15px;
+      margin-bottom: 3px;
     }
   </style>
 </head>
 <body>
   <div class="no-print no-print-bar">
     <div>
-      <strong>📊 Master Work Plan (Gantt Chart) — ${esc(batch.name)}</strong>
-      <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#93c5fd;">
-        ${isLegal ? '📏 Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : '📄 A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
+      <strong>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)}</strong>
+      <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#cbd5e1;">
+        ${isLegal ? 'Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : 'A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
       </span>
     </div>
     <div style="display:flex;align-items:center;">
       <a href="${a4Href}" class="btn ${!isLegal ? '' : 'btn-secondary'}" style="${!isLegal ? 'background:#059669;' : ''}">
-        📄 A4 Landscape
+        A4 Landscape
       </a>
       <a href="${legalHref}" class="btn ${isLegal ? '' : 'btn-secondary'}" style="${isLegal ? 'background:#059669;' : ''}">
-        📏 Legal Landscape
+        Legal Landscape
       </a>
       <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
       <a href="${pdfHref}" class="btn">⬇️ Download PDF</a>
@@ -1528,34 +1643,32 @@ function renderWorkPlan({
   </div>
 
   <section class="sheet">
-    <div class="wp-header">
-      <div class="wp-title-block">
-        <h1>MASTER TRAINING WORK PLAN &amp; GANTT CHART (පුහුණු ක්‍රියාකාරී සැලැස්ම)</h1>
-        <h2>ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)}</h2>
-        <p>${esc(courseName)} · NCS: ${esc(batch.ncs_code || 'K72S002')} · Synced with Lesson Plan &amp; Timetable${version ? ` (Plan v${version.version_no})` : ''}</p>
-      </div>
-
-      <div class="wp-meta-grid">
-        <div><strong>Batch:</strong> ${esc(batch.name)}</div>
-        <div><strong>Start Date:</strong> ${esc(totals.startDate || batch.start_date)}</div>
-        <div><strong>Target Hrs:</strong> ${fmtHours(totals.curriculumHours || 720)}h (${fmtHours(weeklyHours)}h/wk)</div>
-        <div><strong>Delivered:</strong> ${fmtHours(totals.delivered || 0)} / ${fmtHours(totals.planned || 720)}h</div>
-        <div><strong>Instructor:</strong> ${esc(teacherName)}</div>
-        <div><strong>End Date:</strong> ${esc(totals.endDate || '-')}</div>
-        <div><strong>Teaching Days:</strong> ${totals.teachingDays || 0} Days</div>
-        <div><strong>Weeks Span:</strong> ${weeks.length} Weeks</div>
-      </div>
+    <div class="wp-masthead">
+      <div class="org-title">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)} (${esc(centreEn)})</div>
+      <div class="doc-title">පුහුණු ක්‍රියාකාරී සැලැස්ම — MASTER TRAINING WORK PLAN &amp; GANTT SCHEDULE</div>
+      <div class="course-sub">${esc(courseName)} · National Competency Standard (NCS: ${esc(batch.ncs_code || 'K72S002')})</div>
     </div>
+
+    <table class="wp-spec-strip">
+      <tr>
+        <td><strong>Batch / Intake :-</strong> ${esc(batch.name)}</td>
+        <td><strong>Commencement :-</strong> ${esc(totals.startDate || batch.start_date)}</td>
+        <td><strong>Completion :-</strong> ${esc(totals.endDate || '-')}</td>
+        <td><strong>Duration :-</strong> ${ fmtHours(totals.curriculumHours || 720) } Hours (${totals.teachingDays || 0} Days / ${weeks.length} Weeks)</td>
+        <td><strong>Delivered to Date :-</strong> ${fmtHours(totals.delivered || 0)} Hours</td>
+        <td><strong>Instructor :-</strong> ${esc(teacherName)}</td>
+      </tr>
+    </table>
 
     <table class="gantt-table">
       <thead>
         <tr class="month-row">
-          <th rowspan="2" class="col-no">#</th>
-          <th rowspan="2" class="col-code">Code</th>
-          <th rowspan="2" class="col-title">Module / Competency Unit &amp; Tasks</th>
+          <th rowspan="2" class="col-no">No</th>
+          <th rowspan="2" class="col-code">Unit Code</th>
+          <th rowspan="2" class="col-title">Competency Unit / Module Title &amp; Tasks</th>
           <th rowspan="2" class="col-hrs">Hours<br><span style="font-weight:normal;font-size:5.5pt;">(T+P=Tot)</span></th>
-          <th rowspan="2" class="col-done">Done<br><span style="font-weight:normal;font-size:5.5pt;">(Hrs)</span></th>
-          <th rowspan="2" class="col-dates">Schedule Dates<br><span style="font-weight:normal;font-size:5.5pt;">(Start – End)</span></th>
+          <th rowspan="2" class="col-done">Taught<br><span style="font-weight:normal;font-size:5.5pt;">(Hrs)</span></th>
+          <th rowspan="2" class="col-dates">Scheduled Period<br><span style="font-weight:normal;font-size:5.5pt;">(From – To)</span></th>
           <th rowspan="2" class="col-days">Days</th>
           ${months.map(m => `
             <th colspan="${m.weeksCount}" class="month-hdr">
@@ -1565,7 +1678,7 @@ function renderWorkPlan({
         </tr>
         <tr class="week-row">
           ${weeks.map(w => `
-            <th class="wk-hdr" title="Week ${w.weekNo}: ${w.monday} to ${w.friday} (${w.plannedHours}h)">
+            <th class="wk-hdr ${w.weekInMonth === 1 ? 'month-start' : ''}" title="Week ${w.weekNo}: ${w.monday} to ${w.friday} (${w.plannedHours}h)">
               W${w.weekInMonth}
               <span class="wk-dates">${esc(w.monday.slice(8, 10))}–${esc(w.friday.slice(8, 10))}</span>
             </th>
@@ -1582,14 +1695,14 @@ function renderWorkPlan({
               <td class="col-title">
                 <div class="mod-title-main">${esc(m.unit_title || m.title)}</div>
                 <div class="mod-sub-meta">
-                  ${taskList ? `Tasks: ${esc(taskList)} · ` : ''}${(m.sessions || []).length} Sessions
+                  ${taskList ? `Tasks: ${esc(taskList)} · ` : ''}${(m.sessions || []).length} Lesson Sessions
                 </div>
               </td>
               <td class="col-hrs">
-                <span style="color:#475569;">${fmtHours(m.theory_hours)}+${fmtHours(m.practical_hours)}=</span><strong>${fmtHours(m.total_hours)}h</strong>
+                ${fmtHours(m.theory_hours)}+${fmtHours(m.practical_hours)}=<strong>${fmtHours(m.total_hours)}</strong>
               </td>
-              <td class="col-done" style="color:${m.deliveredHours >= m.plannedHours && m.plannedHours > 0 ? '#047857' : m.deliveredHours > 0 ? '#b45309' : '#64748b'};">
-                ${fmtHours(m.deliveredHours)}h
+              <td class="col-done">
+                ${fmtHours(m.deliveredHours)}
               </td>
               <td class="col-dates">
                 ${shortDate(m.firstDate)} – ${shortDate(m.lastDate)}
@@ -1607,7 +1720,7 @@ function renderWorkPlan({
                 return `
                   <td class="g-cell ${isMonthStart ? 'month-start' : ''}">
                     <div class="g-bar ${barCls}" title="${m.code} · Week ${w.weekNo} (${w.monday} to ${w.friday}): ${cell.delivered}/${cell.planned}h">
-                      ${fmtHours(cell.planned)}h
+                      ${fmtHours(cell.planned)}
                     </div>
                   </td>
                 `;
@@ -1616,13 +1729,13 @@ function renderWorkPlan({
           `;
         }).join('')}
         <tr class="tot-row">
-          <td colspan="3" style="text-align:right;padding-right:6px;">TOTAL SCHEDULED CURRICULUM HOURS &amp; WEEKLY BREAKDOWN:</td>
-          <td>${fmtHours(totals.curriculumHours || 720)}h</td>
-          <td style="color:#047857;">${fmtHours(totals.delivered || 0)}h</td>
+          <td colspan="3" style="text-align:right;padding-right:8px;">TOTAL CURRICULUM HOURS &amp; WEEKLY ALLOCATION :-</td>
+          <td>${fmtHours(totals.curriculumHours || 720)}</td>
+          <td>${fmtHours(totals.delivered || 0)}</td>
           <td>${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}</td>
           <td>${totals.teachingDays || 0}</td>
-          ${weeks.map(w => `
-            <td style="font-size:${isLegal ? '5.8pt' : '5.2pt'};padding:1px;">
+          ${weeks.map((w, wi) => `
+            <td class="${w.weekInMonth === 1 ? 'g-cell month-start' : ''}" style="font-size:${isLegal ? '6pt' : '5.3pt'};padding:1px;">
               ${w.plannedHours ? `${fmtHours(w.plannedHours)}` : '-'}
             </td>
           `).join('')}
@@ -1633,23 +1746,26 @@ function renderWorkPlan({
     <div class="wp-footer">
       <div>
         <div class="legend-items">
-          <span><span class="lg-box" style="background:#10b981;border:1px solid #047857;"></span>Completed / Taught Week</span>
-          <span><span class="lg-box" style="background:linear-gradient(90deg,#10b981 50%,#3b82f6 50%);border:1px solid #1d4ed8;"></span>In Progress (Partial)</span>
-          <span><span class="lg-box" style="background:#dbeafe;border:1px solid #3b82f6;"></span>Planned Schedule (Synced with Timetable &amp; Holidays)</span>
+          <span>Legend :-</span>
+          <span><span class="lg-box" style="background:#2c3e35;border:0.75pt solid #000;"></span>Completed / Taught Week</span>
+          <span><span class="lg-box" style="background:repeating-linear-gradient(-45deg,#d1d5db,#d1d5db 2px,#fff 2px,#fff 4px);border:0.75pt solid #000;"></span>In Progress (Partial)</span>
+          <span><span class="lg-box" style="background:#dfe3e8;border:0.75pt solid #222;"></span>Planned Training Schedule (Hours/Week)</span>
         </div>
-        <div style="margin-top:3px;color:#475569;font-size:6.5pt;">
-          Note: All module dates, task sequences, and weekly hour allocations automatically synchronize with the Master Lesson Plan and Holiday Calendar.
+        <div style="margin-top:2px;color:#333;font-size:6.6pt;font-style:italic;">
+          * Synchronized with the Master Lesson Plan, Daily Timetable, and Official Public Holiday Calendar.
         </div>
       </div>
 
       <div class="sig-row">
         <div class="sig-block">
           <div class="sig-line"></div>
-          <div><strong>Prepared by:</strong> ${esc(teacherName)} (${esc(teacherDesig)})</div>
+          <div><strong>Prepared by :-</strong> ${esc(teacherName)}</div>
+          <div style="font-size:6.8pt;color:#333;">${esc(teacherDesig)}</div>
         </div>
         <div class="sig-block">
           <div class="sig-line"></div>
-          <div><strong>Approved by:</strong> ${esc(approverName)} (${esc(approverTitle)})</div>
+          <div><strong>Approved by :-</strong> ${esc(approverName)}</div>
+          <div style="font-size:6.8pt;color:#333;">${esc(approverTitle)}</div>
         </div>
       </div>
     </div>

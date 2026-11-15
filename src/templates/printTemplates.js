@@ -1557,11 +1557,14 @@ function renderWorkPlan({
   totals = {},
   paperSize = 'a4',
   split4 = false,
+  mode = 'progress',
   a4Href = '#',
   legalHref = '#',
   split4Href = '#',
   a2Href = '#',
   a1Href = '#',
+  progressHref = '#',
+  completeHref = '#',
   pdfHref = '#'
 }) {
   const normPaper = String(paperSize).toLowerCase();
@@ -1570,6 +1573,18 @@ function renderWorkPlan({
   const isA2 = normPaper === 'a2';
   const isPoster = isA1 || isA2;
   const isLegal = normPaper === 'legal' || isSplit4;
+  const isComplete = String(mode).toLowerCase() === 'complete';
+
+  const getModuleWeekSpan = (m) => {
+    const wkNums = Object.keys(m.weeklyHours || {})
+      .filter(k => m.weeklyHours[k] && m.weeklyHours[k].planned > 0)
+      .map(Number)
+      .sort((a, b) => a - b);
+    if (!wkNums.length) return '-';
+    const first = wkNums[0];
+    const last = wkNums[wkNums.length - 1];
+    return first === last ? `W${first}` : `W${first} – W${last}`;
+  };
 
   const pageWidthMm = isA1 ? '841mm' : isA2 ? '594mm' : isLegal ? '355.6mm' : '297mm';
   const pageHeightMm = isA1 ? '594mm' : isA2 ? '420mm' : isLegal ? '215.9mm' : '210mm';
@@ -1971,12 +1986,19 @@ function renderWorkPlan({
 <body>
   <div class="no-print no-print-bar">
     <div>
-      <strong>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)}</strong>
+      <strong>${isComplete ? 'Complete Course Master Work Plan (Classroom Wall Display — Weeks Only)' : `Master Training Work Plan (Gantt Chart) — ${esc(batch.name)}`}</strong>
       <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#cbd5e1;">
         ${isA1 ? 'A1 Classroom Poster (841 × 594mm) · High-Res Wall Display' : isA2 ? 'A2 Large Board Poster (594 × 420mm) · High-Res Wall Display' : isSplit4 ? '4 Legal Landscape Pages (Tile / Combine) · 20mm Left Gutter' : isLegal ? 'Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : 'A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
       </span>
     </div>
-    <div style="display:flex;align-items:center;">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+      <a href="${progressHref}" class="btn ${!isComplete ? '' : 'btn-secondary'}" style="${!isComplete ? 'background:#2563eb;' : ''}" title="Show ongoing batch progression with dates & months">
+        📊 Ongoing Progress
+      </a>
+      <a href="${completeHref}" class="btn ${isComplete ? '' : 'btn-secondary'}" style="${isComplete ? 'background:#7c3aed;' : ''}" title="Complete Master Classroom Chart (Weeks Only — No Year or Month)">
+        🏛️ Complete Plan (Weeks Only)
+      </a>
+      <span style="margin:0 6px;color:#475569;">|</span>
       <a href="${a4Href}" class="btn ${normPaper === 'a4' && !isSplit4 ? '' : 'btn-secondary'}" style="${normPaper === 'a4' && !isSplit4 ? 'background:#059669;' : ''}">
         A4
       </a>
@@ -2003,6 +2025,9 @@ function renderWorkPlan({
     const sModules = sh.modules;
     const isRightTile = isSplit4 && sh.side === 'right';
     const isBottomTile = isSplit4 && sh.rowPart === 'bottom';
+    const sheetPlannedHrs = sWeeks.reduce((acc, w) => acc + (w.plannedHours || 0), 0);
+    const firstWkNo = sWeeks[0]?.weekNo || 1;
+    const lastWkNo = sWeeks[sWeeks.length - 1]?.weekNo || sWeeks.length;
 
     return `
   <section class="sheet ${isSplit4 ? 'sheet-puzzle' : ''} ${isRightTile ? 'sheet-right-tile' : ''}">
@@ -2017,9 +2042,21 @@ function renderWorkPlan({
     <div class="wp-masthead">
       <div class="org-title">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)} (${esc(centreEn)})</div>
       <div class="doc-title">පුහුණු ක්‍රියාකාරී සැලැස්ම — MASTER TRAINING WORK PLAN &amp; GANTT SCHEDULE</div>
-      <div class="course-sub">${esc(courseName)} · National Competency Standard (NCS: ${esc(batch.ncs_code || 'K72S002')})</div>
+      <div class="course-sub">${esc(courseName)} · National Competency Standard (NCS: ${esc(batch.ncs_code || 'K72S004')})</div>
     </div>
 
+    ${isComplete ? `
+    <table class="wp-spec-strip">
+      <tr>
+        <td><strong>Course :-</strong> ICT Technician (NVQ Level 4)</td>
+        <td><strong>Competency Standard :-</strong> NCS: ${esc(batch.ncs_code || 'K72S004')}</td>
+        <td><strong>Total Curriculum :-</strong> ${fmtHours(totals.curriculumHours || 720)} Hours (16 Modules)</td>
+        <td><strong>Course Duration :-</strong> ${allWeeks.length} Weeks (${totals.teachingDays || 0} Training Days)</td>
+        <td><strong>Weekly Schedule :-</strong> ${weeklyHours || 30} Hours / Week</td>
+        <td><strong>Instructor :-</strong> ${esc(teacherName)}</td>
+      </tr>
+    </table>
+    ` : `
     <table class="wp-spec-strip">
       <tr>
         <td><strong>Batch / Intake :-</strong> ${esc(batch.name)}</td>
@@ -2030,6 +2067,7 @@ function renderWorkPlan({
         <td><strong>Instructor :-</strong> ${esc(teacherName)}</td>
       </tr>
     </table>
+    `}
     ` : isSplit4 && isRightTile && !isBottomTile ? `
     <!-- Top-Right puzzle placeholder to align row heights exactly with Top-Left -->
     <div class="wp-masthead-placeholder" style="height: 18mm; border-bottom: 2pt double #000; margin-bottom: 5px; display: flex; align-items: center; justify-content: flex-end; padding-right: 5mm;">
@@ -2046,23 +2084,30 @@ function renderWorkPlan({
           <th rowspan="2" class="col-no">No</th>
           <th rowspan="2" class="col-code">Unit Code</th>
           <th rowspan="2" class="col-title">Competency Unit / Module Title &amp; Tasks</th>
-          <th rowspan="2" class="col-hrs">Hours<br><span style="font-weight:normal;font-size:5.5pt;">(T+P=Tot)</span></th>
-          <th rowspan="2" class="col-done">Taught<br><span style="font-weight:normal;font-size:5.5pt;">(Hrs)</span></th>
-          <th rowspan="2" class="col-dates">Scheduled Period<br><span style="font-weight:normal;font-size:5.5pt;">(From – To)</span></th>
+          <th rowspan="2" class="col-hrs">Hours<br><span style="font-weight:normal;font-size:${fontPt(5.5)};">(T+P=Tot)</span></th>
+          ${!isComplete ? `<th rowspan="2" class="col-done">Taught<br><span style="font-weight:normal;font-size:${fontPt(5.5)};">(Hrs)</span></th>` : ''}
+          <th rowspan="2" class="col-dates">${isComplete ? `Scheduled Weeks<br><span style="font-weight:normal;font-size:${fontPt(5.5)};">(Week Span)</span>` : `Scheduled Period<br><span style="font-weight:normal;font-size:${fontPt(5.5)};">(From – To)</span>`}</th>
           <th rowspan="2" class="col-days">Days</th>
-          ${sMonths.map(m => `
+          ${isComplete ? `
+            <th colspan="${sWeeks.length}" class="month-hdr">
+              WEEKLY TRAINING SCHEDULE — WEEKS W${firstWkNo} TO W${lastWkNo} (${fmtHours(sheetPlannedHrs)} HOURS)
+            </th>
+          ` : sMonths.map(m => `
             <th colspan="${m.weeksCount}" class="month-hdr">
               ${esc(m.label)} (${fmtHours(m.plannedHours)}h)
             </th>
           `).join('')}
         </tr>
         <tr class="week-row">
-          ${sWeeks.map(w => `
-            <th class="wk-hdr ${w.weekInMonth === 1 ? 'month-start' : ''}" title="Week ${w.weekNo}: ${w.monday} to ${w.friday} (${w.plannedHours}h)">
-              W${w.weekInMonth}
-              <span class="wk-dates">${esc(w.monday.slice(8, 10))}–${esc(w.friday.slice(8, 10))}</span>
+          ${sWeeks.map((w, wIdx) => {
+            const isBlockStart = isComplete ? (wIdx === 0 || (w.weekNo - 1) % 4 === 0) : (w.weekInMonth === 1);
+            return `
+            <th class="wk-hdr ${isBlockStart ? 'month-start' : ''}" title="Week ${w.weekNo} (${w.plannedHours}h)">
+              W${isComplete ? w.weekNo : w.weekInMonth}
+              ${!isComplete ? `<span class="wk-dates">${esc(w.monday.slice(8, 10))}–${esc(w.friday.slice(8, 10))}</span>` : ''}
             </th>
-          `).join('')}
+          `;
+          }).join('')}
         </tr>
       </thead>
       <tbody>
@@ -2082,25 +2127,27 @@ function renderWorkPlan({
               <td class="col-hrs">
                 ${fmtHours(m.theory_hours)}+${fmtHours(m.practical_hours)}=<strong>${fmtHours(m.total_hours)}</strong>
               </td>
+              ${!isComplete ? `
               <td class="col-done">
                 ${fmtHours(m.deliveredHours)}
               </td>
+              ` : ''}
               <td class="col-dates">
-                ${shortDate(m.firstDate)} – ${shortDate(m.lastDate)}
+                ${isComplete ? getModuleWeekSpan(m) : `${shortDate(m.firstDate)} – ${shortDate(m.lastDate)}`}
               </td>
               <td class="col-days">${m.days || 0}</td>
-              ${sWeeks.map(w => {
+              ${sWeeks.map((w, wIdx) => {
                 const cell = m.weeklyHours && m.weeklyHours[w.weekNo];
-                const isMonthStart = w.weekInMonth === 1;
+                const isBlockStart = isComplete ? (wIdx === 0 || (w.weekNo - 1) % 4 === 0) : (w.weekInMonth === 1);
                 if (!cell || !cell.planned) {
-                  return `<td class="g-cell ${isMonthStart ? 'month-start' : ''}"></td>`;
+                  return `<td class="g-cell ${isBlockStart ? 'month-start' : ''}"></td>`;
                 }
-                const isDone = cell.delivered >= cell.planned && cell.planned > 0;
-                const isPartial = !isDone && cell.delivered > 0;
+                const isDone = isComplete ? true : (cell.delivered >= cell.planned && cell.planned > 0);
+                const isPartial = !isComplete && !isDone && cell.delivered > 0;
                 const barCls = isDone ? 'g-bar-done' : isPartial ? 'g-bar-partial' : 'g-bar-planned';
                 return `
-                  <td class="g-cell ${isMonthStart ? 'month-start' : ''}">
-                    <div class="g-bar ${barCls}" title="${m.code} · Week ${w.weekNo} (${w.monday} to ${w.friday}): ${cell.delivered}/${cell.planned}h">
+                  <td class="g-cell ${isBlockStart ? 'month-start' : ''}">
+                    <div class="g-bar ${barCls}" title="${m.code} · Week W${w.weekNo}: ${cell.planned}h">
                       ${fmtHours(cell.planned)}
                     </div>
                   </td>
@@ -2112,14 +2159,17 @@ function renderWorkPlan({
         <tr class="tot-row">
           <td colspan="3" class="tot-label-cell" style="text-align:right;padding-right:8px;">${sh.rowPart === 'top' ? 'PARTIAL SUB-TOTAL (HOURS) :-' : 'TOTAL CURRICULUM HOURS :-'}</td>
           <td class="col-hrs">${fmtHours(totals.curriculumHours || 720)}</td>
-          <td class="col-done">${fmtHours(totals.delivered || 0)}</td>
-          <td class="col-dates">${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}</td>
+          ${!isComplete ? `<td class="col-done">${fmtHours(totals.delivered || 0)}</td>` : ''}
+          <td class="col-dates">${isComplete ? `W1 – W${allWeeks.length}` : `${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}`}</td>
           <td class="col-days">${totals.teachingDays || 0}</td>
-          ${sWeeks.map((w) => `
-            <td class="${w.weekInMonth === 1 ? 'g-cell month-start' : ''}" style="font-size:${isLegal ? '6pt' : '5.3pt'};padding:1px;">
+          ${sWeeks.map((w, wIdx) => {
+            const isBlockStart = isComplete ? (wIdx === 0 || (w.weekNo - 1) % 4 === 0) : (w.weekInMonth === 1);
+            return `
+            <td class="${isBlockStart ? 'g-cell month-start' : ''}" style="font-size:${fontPt(isLegal ? 6 : 5.3)};padding:1px;">
               ${w.plannedHours ? `${fmtHours(w.plannedHours)}` : '-'}
             </td>
-          `).join('')}
+          `;
+          }).join('')}
         </tr>
       </tbody>
     </table>
@@ -2127,18 +2177,26 @@ function renderWorkPlan({
     ${(!isSplit4 || isBottomTile) ? `
     <div class="wp-footer">
       <div>
-        ${!isRightTile ? `
+        ${!isRightTile ? (isComplete ? `
+        <div class="legend-items">
+          <span>Legend :-</span>
+          <span><span class="lg-box" style="background:#2c3e35;border:0.75pt solid #000;"></span>Allocated Weekly Training Hours (Hrs / Week)</span>
+        </div>
+        <div style="margin-top:2px;color:#333;font-size:${fontPt(6.6)};font-style:italic;">
+          * Official Complete Master Training Work Plan — Reusable Classroom Display (Weeks W1 to W${allWeeks.length}).
+        </div>
+        ` : `
         <div class="legend-items">
           <span>Legend :-</span>
           <span><span class="lg-box" style="background:#2c3e35;border:0.75pt solid #000;"></span>Completed / Taught Week</span>
           <span><span class="lg-box" style="background:repeating-linear-gradient(-45deg,#d1d5db,#d1d5db 2px,#fff 2px,#fff 4px);border:0.75pt solid #000;"></span>In Progress (Partial)</span>
           <span><span class="lg-box" style="background:#dfe3e8;border:0.75pt solid #222;"></span>Planned Schedule</span>
         </div>
-        <div style="margin-top:2px;color:#333;font-size:6.6pt;font-style:italic;">
+        <div style="margin-top:2px;color:#333;font-size:${fontPt(6.6)};font-style:italic;">
           * Synchronized with Master Lesson Plan, Timetable, and Public Holidays.
         </div>
-        ` : `
-        <div style="color:#64748b;font-size:7pt;">[ Tile 4 / 4 — Bottom-Right ]</div>
+        `) : `
+        <div style="color:#64748b;font-size:${fontPt(7)};">[ Tile 4 / 4 — Bottom-Right ]</div>
         `}
       </div>
 
@@ -2147,13 +2205,13 @@ function renderWorkPlan({
         <div class="sig-block">
           <div class="sig-line"></div>
           <div><strong>Prepared by :-</strong> ${esc(teacherName)}</div>
-          <div style="font-size:6.8pt;color:#333;">${esc(teacherDesig)}</div>
+          <div style="font-size:${fontPt(6.8)};color:#333;">${esc(teacherDesig)}</div>
         </div>
         ` : `
         <div class="sig-block">
           <div class="sig-line"></div>
           <div><strong>Approved by :-</strong> ${esc(approverName)}</div>
-          <div style="font-size:6.8pt;color:#333;">${esc(approverTitle)}</div>
+          <div style="font-size:${fontPt(6.8)};color:#333;">${esc(approverTitle)}</div>
         </div>
         `}
       </div>

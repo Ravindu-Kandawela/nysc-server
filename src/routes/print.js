@@ -13,9 +13,11 @@ const {
   renderMonthlyCalendarPlan,
   renderBatchMonthlyCalendarPlan,
   renderMonthlyAttendance,
-  renderWorkPlan
+  renderWorkPlan,
+  renderTvecT1T2
 } = require('../templates/printTemplates');
 const lessonPlanService = require('../services/lessonPlanService');
+const tvecT1T2Service = require('../services/tvecT1T2Service');
 
 /** Sanitize a string for safe OS filenames while preserving spaces, dashes, and letters */
 function sanitizeFilename(name) {
@@ -1395,6 +1397,109 @@ router.get('/work-plan', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('Print work plan error:', err);
     res.status(500).send('Failed to generate work plan Gantt document');
+  }
+});
+
+// -------------------------------------------------------------
+// 7A. TVEC ACCREDITATION T-1 & T-2 MODULES METADATA (M01 - M12 Core Only)
+// GET /api/print/tvec-t1-t2-modules?batchId=
+// -------------------------------------------------------------
+router.get('/tvec-t1-t2-modules', optionalAuth, async (req, res) => {
+  try {
+    const { batchId } = req.query;
+    const meta = await tvecT1T2Service.getT1T2Metadata(batchId);
+    const modules = tvecT1T2Service.getCoreT1T2Modules().map(m => ({
+      code: m.code,
+      title: m.title,
+      headerTitle: m.headerTitle,
+      theoryHours: m.theoryHours,
+      practicalHours: m.practicalHours,
+      totalHours: m.totalHours,
+      tasksCount: m.tasksCount,
+      sessionsTotal: m.sessionsTotal,
+      minutesTotal: m.minutesTotal,
+      pdfFilename: sanitizeFilename(`T1 T2 - ${m.code} ${m.title}.pdf`),
+      xlsxFilename: sanitizeFilename(`T1 T2 - ${m.code} ${m.title}.xlsx`)
+    }));
+    res.json({ meta, modules });
+  } catch (err) {
+    console.error('Fetch TVEC T1 T2 modules error:', err);
+    res.status(500).json({ error: 'Failed to load TVEC T-1 & T-2 modules' });
+  }
+});
+
+// -------------------------------------------------------------
+// 7B. TVEC ACCREDITATION T-1 & T-2 PRINT / PDF / EXCEL (.XLSX)
+// GET /api/print/tvec-t1-t2?batchId=&modules=M01,M02&part=both|t1|t2&timeUnit=hours|minutes&format=html|pdf|xlsx&download=1
+// -------------------------------------------------------------
+router.get('/tvec-t1-t2', optionalAuth, async (req, res) => {
+  try {
+    const {
+      batchId,
+      modules: rawModules,
+      part = 'both',
+      timeUnit = 'hours',
+      format = 'html',
+      download
+    } = req.query;
+
+    const normUnit = String(timeUnit).toLowerCase() === 'minutes' ? 'minutes' : 'hours';
+    const selectedCodes = rawModules
+      ? String(rawModules).split(',').map(s => s.trim()).filter(Boolean)
+      : null;
+
+    const modules = tvecT1T2Service.getCoreT1T2Modules(selectedCodes);
+    if (!modules.length) {
+      return res.status(404).send('No core modules matched the selection.');
+    }
+
+    const meta = await tvecT1T2Service.getT1T2Metadata(batchId);
+
+    // Native Excel (.xlsx) download for a module
+    if (String(format).toLowerCase() === 'xlsx') {
+      const mod = modules[0];
+      const buf = tvecT1T2Service.generateModuleXlsxBuffer(mod, meta, normUnit);
+      const xlsxName = sanitizeFilename(`T1 T2 - ${mod.code} ${mod.title}.xlsx`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${xlsxName}"; filename*=UTF-8''${encodeURIComponent(xlsxName)}`);
+      return res.send(buf);
+    }
+
+    const normPart = ['both', 't1', 't2'].includes(String(part).toLowerCase())
+      ? String(part).toLowerCase()
+      : 'both';
+
+    const partLabel = normPart === 't1' ? 'T1 Scheme of Training' : normPart === 't2' ? 'T2 Presentation' : 'T1 & T2';
+    const titleLabel = modules.length === 1
+      ? `${partLabel} - ${modules[0].code} ${modules[0].title}`
+      : `TVEC ${partLabel} (${modules.length} Core Modules)`;
+
+    let xlsxHref = null;
+    if (modules.length === 1) {
+      const qXlsx = new URLSearchParams({ ...req.query, modules: modules[0].code, timeUnit: normUnit, format: 'xlsx', download: '1' });
+      xlsxHref = `${req.baseUrl}${req.path}?${qXlsx.toString()}`;
+    }
+
+    const qToggle = new URLSearchParams({ ...req.query, timeUnit: normUnit === 'hours' ? 'minutes' : 'hours', format: 'html' });
+    const unitToggleHref = `${req.baseUrl}${req.path}?${qToggle.toString()}`;
+
+    const html = renderTvecT1T2({
+      modules,
+      meta,
+      part: normPart,
+      timeUnit: normUnit,
+      pdfHref: pdfLink(req),
+      xlsxHref,
+      unitToggleHref,
+      titleLabel
+    });
+
+    const filename = sanitizeFilename(`${titleLabel}.pdf`);
+    const asAttachment = download === '1' || download === 'true';
+    return sendHtmlOrPdf(res, html, format, filename, asAttachment);
+  } catch (err) {
+    console.error('Print TVEC T1 & T2 error:', err);
+    res.status(500).send('Failed to generate TVEC Format T-1 & T-2 document');
   }
 });
 

@@ -2813,6 +2813,462 @@ function renderMonthlyAttendance({
 </html>`;
 }
 
+// =====================================================================
+// TVEC ACCREDITATION FORMAT T-1 (SCHEME OF TRAINING) & T-2 (PRESENTATION)
+// Reusable Technical Subject Format (M01 - M12, excluding Basic Modules)
+// Uses relative Month & Week numbers (no fixed calendar dates)
+// =====================================================================
+function renderTvecT1T2({
+  modules = [],
+  meta = {},
+  part = 'both', // 'both' | 't1' | 't2'
+  timeUnit = 'hours', // 'hours' | 'minutes'
+  pdfHref = '#',
+  xlsxHref = null,
+  unitToggleHref = null,
+  titleLabel = 'TVEC Format T-1 & T-2 — Scheme of Training & Presentation'
+}) {
+  const useHours = String(timeUnit).toLowerCase() !== 'minutes';
+  const fmtHrsCell = (h) => {
+    const n = Number(h);
+    if (Number.isInteger(n)) return `${String(n).padStart(2, '0')} ${n === 1 ? 'Hr' : 'Hrs'}`;
+    const clean = Number(n.toFixed(2));
+    return `${clean} ${clean === 1 ? 'Hr' : 'Hrs'}`;
+  };
+  const institution = meta.institution || 'VTC - Akuressa (NYSC)';
+  const trade = meta.trade || 'ICT Technician';
+  const instructor = meta.instructor || 'K.A.R.Lakshan';
+  const traineesCount = meta.traineesCount || 25;
+
+  const showT1 = part === 'both' || part === 't1';
+  const showT2 = part === 'both' || part === 't2';
+
+  // Helper to compute rowspan for contiguous identical values in T-1 (Month & Week No)
+  function computeContiguousSpans(tasks, keyFn) {
+    const spans = new Array(tasks.length).fill(0);
+    let i = 0;
+    while (i < tasks.length) {
+      let j = i;
+      const val = keyFn(tasks[i]);
+      while (j + 1 < tasks.length && keyFn(tasks[j + 1]) === val) j++;
+      spans[i] = j - i + 1;
+      i = j + 1;
+    }
+    return spans;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${esc(titleLabel)}</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 8mm 10mm 8mm 20mm;
+    }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      margin: 0;
+      padding: 0;
+      color: #000;
+      font-family: 'Calibri', 'Arial', 'Times New Roman', sans-serif;
+      font-size: 9.5pt;
+    }
+    ${TOOLBAR_CSS}
+    .tvec-page {
+      width: 100%;
+      page-break-after: always;
+      break-after: page;
+    }
+    .tvec-page:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    @media screen {
+      body { background: #e2e8f0; }
+      .tvec-page {
+        width: 297mm;
+        min-height: 210mm;
+        margin: 14px auto;
+        background: #fff;
+        padding: 10mm 12mm 10mm 20mm;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+      }
+    }
+    @media print {
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      tr { break-inside: avoid; }
+    }
+
+    /* T-1 Top Header Layout matching exact TVEC Excel sheet */
+    .t1-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .t1-main-title {
+      font-size: 14pt;
+      font-weight: bold;
+      text-align: center;
+      flex: 1;
+    }
+    .t1-format-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10.5pt;
+      font-weight: bold;
+    }
+    .t1-format-badge {
+      border: 1pt solid #000;
+      padding: 2px 12px;
+      font-weight: bold;
+      background: #fff;
+    }
+
+    .t1-meta-grid {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 8px;
+    }
+    .t1-meta-grid td {
+      padding: 3px 6px;
+      font-size: 9.5pt;
+    }
+    .t1-box-val {
+      border: 1pt solid #000;
+      font-weight: bold;
+      text-align: center;
+      background: #fff;
+      height: 22px;
+    }
+    .t1-box-lbl {
+      font-weight: bold;
+      text-align: center;
+      padding-top: 2px;
+      font-size: 9pt;
+    }
+
+    /* T-1 Main Table */
+    .t1-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+    }
+    .t1-table th, .t1-table td {
+      border: 1pt solid #000;
+      padding: 5px 6px;
+      font-size: 9.5pt;
+      vertical-align: middle;
+    }
+    .t1-table thead th {
+      font-weight: bold;
+      text-align: center;
+      background: #f8fafc;
+      height: 36px;
+    }
+    .t1-c { text-align: center; }
+    .t1-side-cell {
+      vertical-align: middle !important;
+      font-size: 9pt;
+      line-height: 1.5;
+      white-space: pre-line;
+    }
+
+    /* T-2 Presentation Block */
+    .t2-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 3px;
+    }
+    .t2-pres-label {
+      font-size: 11pt;
+      font-weight: bold;
+    }
+    .t2-format-tag {
+      font-size: 9.5pt;
+      font-weight: bold;
+      border: 1pt solid #000;
+      padding: 1px 8px;
+    }
+    .t2-task-banner {
+      font-size: 10.5pt;
+      font-weight: bold;
+      padding: 3px 0 4px 0;
+      border-bottom: 1.5pt solid #000;
+      margin-bottom: 4px;
+    }
+    .t2-eval-note {
+      font-size: 8.8pt;
+      font-style: italic;
+      margin-bottom: 6px;
+      color: #111;
+    }
+    .t2-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .t2-table th, .t2-table td {
+      border: 1pt solid #000;
+      padding: 4px 6px;
+      font-size: 9pt;
+      vertical-align: middle;
+    }
+    .t2-table thead th {
+      font-weight: bold;
+      text-align: center;
+      background: #f8fafc;
+      height: 34px;
+    }
+    .t2-step-hdr {
+      font-weight: bold;
+      background: #fafafa;
+    }
+    .t2-total-row td {
+      border: none;
+      padding-top: 4px;
+      font-weight: bold;
+      text-align: center;
+      font-size: 9.5pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar no-print">
+    <div class="toolbar-title">${esc(titleLabel)}</div>
+    <div class="toolbar-actions">
+      ${unitToggleHref ? `<a class="btn" style="background:#334155;color:#fff;text-decoration:none;" href="${unitToggleHref}">⏱ Switch to ${useHours ? 'Minutes (mns)' : 'Hours (Hrs)'}</a>` : ''}
+      ${xlsxHref ? `<a class="btn btn-pdf" style="background:#15803d;" href="${xlsxHref}">📥 Download Excel (.xlsx)</a>` : ''}
+      <a class="btn btn-pdf" href="${pdfHref}">⬇ Save as PDF</a>
+      <button class="btn btn-print" onclick="window.print()">🖨 Print Document</button>
+    </div>
+  </div>
+
+  ${modules.map(mod => {
+    const tasks = mod.tasks || [];
+    const monthSpans = computeContiguousSpans(tasks, t => t.month);
+    const weekSpans = computeContiguousSpans(tasks, t => String(t.week));
+    const resLines = (mod.resources || []).join('\n');
+    const srvLines = (mod.services || []).join('\n');
+    const assLines = (mod.assessment || []).join('\n');
+    const mediaLines = (mod.media || ['White Board.', 'MM Projector.', 'Computers.', 'PG & Skill Standard.']).join('\n');
+
+    const t1Section = showT1 ? `
+      <section class="tvec-page">
+        <div class="t1-top-bar">
+          <div style="width:120px;"></div>
+          <div class="t1-main-title">Scheme of Training</div>
+          <div class="t1-format-box">
+            <span>Format</span>
+            <span class="t1-format-badge">T - 1</span>
+          </div>
+        </div>
+
+        <table class="t1-meta-grid">
+          <tr>
+            <td style="width:24%;" class="t1-box-val">${esc(institution)}</td>
+            <td style="width:4%;"></td>
+            <td style="width:28%;" class="t1-box-val">${esc(trade)}</td>
+            <td style="width:10%;"></td>
+            <td style="width:18%;" class="t1-box-val">${esc(instructor)}</td>
+            <td style="width:3%;"></td>
+            <td style="width:13%;" class="t1-box-val">${esc(traineesCount)}</td>
+          </tr>
+          <tr>
+            <td class="t1-box-lbl">Institution</td>
+            <td></td>
+            <td class="t1-box-lbl">Trade</td>
+            <td></td>
+            <td class="t1-box-lbl">Instructor</td>
+            <td></td>
+            <td class="t1-box-lbl">No.of Trainees</td>
+          </tr>
+          <tr style="height:8px;"><td colspan="7"></td></tr>
+          <tr>
+            <td colspan="3" class="t1-box-val" style="text-align:left;padding-left:10px;">
+              ${esc(mod.headerTitle || `${mod.code} - ${mod.title}`)} (${mod.totalHours} Hrs)
+            </td>
+            <td></td>
+            <td class="t1-box-val">&nbsp;</td>
+            <td></td>
+            <td class="t1-box-val">&nbsp;</td>
+          </tr>
+          <tr>
+            <td colspan="3" class="t1-box-lbl">Module</td>
+            <td></td>
+            <td class="t1-box-lbl">Date of Prepared</td>
+            <td></td>
+            <td class="t1-box-lbl">Date of Revised</td>
+          </tr>
+        </table>
+
+        <table class="t1-table">
+          <thead>
+            <tr>
+              <th style="width:7%;">Month</th>
+              <th style="width:9%;">Week No</th>
+              <th style="width:9%;">${useHours ? 'Hours' : 'Session'}</th>
+              <th colspan="2" style="width:33%;">Module &amp; Coverd<br><span style="font-weight:normal;font-size:8.5pt;">expected cover</span></th>
+              <th style="width:15%;">Resource &amp; Cost</th>
+              <th style="width:13%;">Service &amp; Utility</th>
+              <th style="width:14%;">Assesment Guidance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tasks.map((t, idx) => `
+              <tr>
+                ${monthSpans[idx] > 0 ? `<td rowspan="${monthSpans[idx]}" class="t1-c"><strong>${t.month}</strong></td>` : ''}
+                ${weekSpans[idx] > 0 ? `<td rowspan="${weekSpans[idx]}" class="t1-c"><strong>${esc(t.week)}</strong></td>` : ''}
+                <td class="t1-c"><strong>${useHours ? esc(t.hoursFormatted || fmtHrsCell((t.minutes || t.sessions * 180) / 60)) : t.sessions}</strong></td>
+                <td class="t1-c" style="width:6%;font-weight:bold;">${esc(t.code)}</td>
+                <td style="width:27%;">${esc(t.title)}</td>
+                ${idx === 0 ? `
+                  <td rowspan="${tasks.length}" class="t1-side-cell">${esc(resLines)}</td>
+                  <td rowspan="${tasks.length}" class="t1-side-cell">${esc(srvLines)}</td>
+                  <td rowspan="${tasks.length}" class="t1-side-cell">${esc(assLines)}</td>
+                ` : ''}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </section>
+    ` : '';
+
+    const t2Sections = showT2 ? tasks.map(t => {
+      const ts = t.timeSplit || { intro: 10, theory: 15, demo: 25, guided: 40, individual: 50, evaluation: 35, feedback: 5, total: t.minutes || 180 };
+      const hs = t.hourSplit || { intro: 0.25, theory: 0.5, demo: 0.5, guided: 0.5, individual: 0.75, evaluation: 0.25, feedback: 0.25, total: 3 };
+      const fmtStep = (key) => useHours ? fmtHrsCell(hs[key]) : `${String(ts[key]).padStart(2, '0')} mns`;
+      const fmtTotal = useHours ? fmtHrsCell(hs.total) : `${ts.total} mns`;
+      const theoryList = (t.theory && t.theory.length) ? t.theory : [`Core concepts and practical steps for ${t.title}.`];
+      const totalBodyRows = 4 + (1 + theoryList.length) + 5;
+
+      return `
+        <section class="tvec-page">
+          <div class="t2-header-row">
+            <div class="t2-pres-label">B . Presentation</div>
+            <div class="t2-format-tag">Format : T - 2 (${esc(mod.code)})</div>
+          </div>
+          <div class="t2-task-banner">
+            ${esc(t.code)} - ${esc(t.title)} (${esc(fmtTotal)})
+          </div>
+          <div class="t2-eval-note">
+            Activities related to evaluations should also be included here
+          </div>
+
+          <table class="t2-table">
+            <thead>
+              <tr>
+                <th style="width:7%;">Serial No</th>
+                <th colspan="2" style="width:36%;">Teaching process<br>Teacher(Trainer) activities</th>
+                <th style="width:20%;">Lerning process<br>Student(Trainee) activities</th>
+                <th style="width:12%;">Methodology</th>
+                <th style="width:15%;">Reqired Media</th>
+                <th style="width:10%;">${useHours ? 'Time (Hrs)' : 'Time'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Step 1: Introduction (4 rows) -->
+              <tr>
+                <td rowspan="4" class="t1-c"><strong>1</strong></td>
+                <td colspan="2" class="t2-step-hdr">Introduction</td>
+                <td rowspan="4" class="t1-c">Actively Participating</td>
+                <td rowspan="4" class="t1-c">Discussion</td>
+                <td rowspan="${totalBodyRows}" class="t1-side-cell" style="padding:8px;">${esc(mediaLines)}</td>
+                <td rowspan="4" class="t1-c"><strong>${esc(fmtStep('intro'))}</strong></td>
+              </tr>
+              <tr>
+                <td class="t1-c" style="width:4%;">1</td>
+                <td>Entrance</td>
+              </tr>
+              <tr>
+                <td class="t1-c">2</td>
+                <td>Explain the title</td>
+              </tr>
+              <tr>
+                <td class="t1-c">3</td>
+                <td>Explain the target of title</td>
+              </tr>
+
+              <!-- Step 2: Theory (1 + theoryList.length rows) -->
+              <tr>
+                <td rowspan="${1 + theoryList.length}" class="t1-c"><strong>2</strong></td>
+                <td colspan="2" class="t2-step-hdr">Theory</td>
+                <td rowspan="${1 + theoryList.length}" class="t1-c">Notedown theory knowlage</td>
+                <td rowspan="${1 + theoryList.length}" class="t1-c">Lecture</td>
+                <td rowspan="${1 + theoryList.length}" class="t1-c"><strong>${esc(fmtStep('theory'))}</strong></td>
+              </tr>
+              ${theoryList.map((th, thIdx) => `
+                <tr>
+                  <td class="t1-c">${thIdx + 1}</td>
+                  <td>${esc(th)}</td>
+                </tr>
+              `).join('')}
+
+              <!-- Step 3: Demonstration -->
+              <tr>
+                <td class="t1-c"><strong>3</strong></td>
+                <td colspan="2" class="t2-step-hdr">Demonstration</td>
+                <td class="t1-c">Looking</td>
+                <td class="t1-c">Group</td>
+                <td class="t1-c"><strong>${esc(fmtStep('demo'))}</strong></td>
+              </tr>
+
+              <!-- Step 4: Train under guidance -->
+              <tr>
+                <td class="t1-c"><strong>4</strong></td>
+                <td colspan="2" class="t2-step-hdr">Train under guidance</td>
+                <td class="t1-c">Training under guidance</td>
+                <td class="t1-c">Group</td>
+                <td class="t1-c"><strong>${esc(fmtStep('guided'))}</strong></td>
+              </tr>
+
+              <!-- Step 5: Train under Individual -->
+              <tr>
+                <td class="t1-c"><strong>5</strong></td>
+                <td colspan="2" class="t2-step-hdr">Train under Induvidual</td>
+                <td class="t1-c">Self Training</td>
+                <td class="t1-c">Induvidual</td>
+                <td class="t1-c"><strong>${esc(fmtStep('individual'))}</strong></td>
+              </tr>
+
+              <!-- Step 6: Performance checking -->
+              <tr>
+                <td class="t1-c"><strong>6</strong></td>
+                <td colspan="2" class="t2-step-hdr">Performance checking</td>
+                <td class="t1-c">face to performance test</td>
+                <td class="t1-c">Evaluation</td>
+                <td class="t1-c"><strong>${esc(fmtStep('evaluation'))}</strong></td>
+              </tr>
+
+              <!-- Step 7: Feedback -->
+              <tr>
+                <td class="t1-c"><strong>7</strong></td>
+                <td colspan="2" class="t2-step-hdr">Feedback</td>
+                <td class="t1-c">Actively Participating</td>
+                <td class="t1-c">Discussion</td>
+                <td class="t1-c"><strong>${esc(fmtStep('feedback'))}</strong></td>
+              </tr>
+
+              <tr class="t2-total-row">
+                <td colspan="6" style="text-align:right;padding-right:8px;">Total Duration :-</td>
+                <td style="border:1pt solid #000;background:#f8fafc;">${esc(fmtTotal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      `;
+    }).join('') : '';
+
+    return t1Section + t2Sections;
+  }).join('')}
+</body>
+</html>`;
+}
+
 module.exports = {
   renderMonthlyReport,
   renderChecklist,
@@ -2822,6 +3278,7 @@ module.exports = {
   renderBatchMonthlyCalendarPlan,
   renderMonthlyAttendance,
   renderWorkPlan,
+  renderTvecT1T2,
   paginateStudents,
   splitName,
   SI_MONTHS

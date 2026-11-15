@@ -1355,29 +1355,43 @@ router.get('/lesson-plan', optionalAuth, async (req, res) => {
 // -------------------------------------------------------------
 // 5. OFFICIAL MASTER TRAINING WORK PLAN (GANTT CHART)
 //    Synchronized with Lesson Plan, Timetable & Holiday Calendar
-// GET /api/print/work-plan?batchId=&paperSize=a4|legal&format=html|pdf
+// GET /api/print/work-plan?batchId=&paperSize=a4|legal|legal4|a2|a1&format=html|pdf
 // -------------------------------------------------------------
 router.get('/work-plan', optionalAuth, async (req, res) => {
   try {
     const { batchId, format = 'html', paperSize: rawPaperSize = 'a4' } = req.query;
     if (!batchId) return res.status(400).send('batchId is required');
 
-    const paperSize = String(rawPaperSize).toLowerCase() === 'legal' ? 'legal' : 'a4';
+    const rawLower = String(rawPaperSize).toLowerCase();
+    const split4 = rawLower === 'legal4' || rawLower === 'split4' || req.query.split4 === '1';
+    const paperSize = split4 ? 'legal' : (rawLower === 'a1' || rawLower === 'a2' || rawLower === 'legal') ? rawLower : 'a4';
     const data = await lessonPlanService.buildLessonPlan(batchId);
 
-    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', format: 'html' });
-    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', format: 'html' });
+    const qA4 = new URLSearchParams({ ...req.query, paperSize: 'a4', split4: '0', format: 'html' });
+    const qLegal = new URLSearchParams({ ...req.query, paperSize: 'legal', split4: '0', format: 'html' });
+    const qSplit4 = new URLSearchParams({ ...req.query, paperSize: 'legal4', split4: '1', format: 'html' });
+    const qA2 = new URLSearchParams({ ...req.query, paperSize: 'a2', split4: '0', format: 'html' });
+    const qA1 = new URLSearchParams({ ...req.query, paperSize: 'a1', split4: '0', format: 'html' });
+
     const a4Href = `${req.baseUrl}${req.path}?${qA4.toString()}`;
     const legalHref = `${req.baseUrl}${req.path}?${qLegal.toString()}`;
+    const split4Href = `${req.baseUrl}${req.path}?${qSplit4.toString()}`;
+    const a2Href = `${req.baseUrl}${req.path}?${qA2.toString()}`;
+    const a1Href = `${req.baseUrl}${req.path}?${qA1.toString()}`;
 
     const html = renderWorkPlan({
       ...data,
       paperSize,
+      split4,
       a4Href,
       legalHref,
+      split4Href,
+      a2Href,
+      a1Href,
       pdfHref: pdfLink(req)
     });
-    return sendHtmlOrPdf(res, html, format, `nysc_work_plan_gantt_${batchId}_${paperSize}.pdf`);
+    const fileSuffix = split4 ? 'legal_4pages_puzzle' : paperSize;
+    return sendHtmlOrPdf(res, html, format, `nysc_work_plan_gantt_${batchId}_${fileSuffix}.pdf`);
   } catch (err) {
     console.error('Print work plan error:', err);
     res.status(500).send('Failed to generate work plan Gantt document');

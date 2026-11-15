@@ -1556,13 +1556,29 @@ function renderWorkPlan({
   gantt = { months: [], weeks: [] },
   totals = {},
   paperSize = 'a4',
+  split4 = false,
   a4Href = '#',
   legalHref = '#',
+  split4Href = '#',
+  a2Href = '#',
+  a1Href = '#',
   pdfHref = '#'
 }) {
-  const isLegal = String(paperSize).toLowerCase() === 'legal';
-  const pageWidthMm = isLegal ? '355.6mm' : '297mm';
-  const pageHeightMm = isLegal ? '215.9mm' : '210mm';
+  const normPaper = String(paperSize).toLowerCase();
+  const isSplit4 = !!split4;
+  const isA1 = normPaper === 'a1';
+  const isA2 = normPaper === 'a2';
+  const isPoster = isA1 || isA2;
+  const isLegal = normPaper === 'legal' || isSplit4;
+
+  const pageWidthMm = isA1 ? '841mm' : isA2 ? '594mm' : isLegal ? '355.6mm' : '297mm';
+  const pageHeightMm = isA1 ? '594mm' : isA2 ? '420mm' : isLegal ? '215.9mm' : '210mm';
+  const pageSizeParam = isA1 ? '841mm 594mm' : isA2 ? '594mm 420mm' : isLegal ? '355.6mm 215.9mm' : 'A4 landscape';
+
+  // Dynamic scale multiplier for large classroom posters (A1/A2)
+  const scale = isA1 ? 2.5 : isA2 ? 1.75 : 1.0;
+  const fontPt = (base) => (base * scale).toFixed(1) + 'pt';
+  const dimMm = (base) => (base * scale).toFixed(1) + 'mm';
 
   const courseName = settings.course_title || 'Information & Communication Technology Technician (ICTT - NVQ Level 4)';
   const teacherName = settings.teacher_name || 'R.Kandawela';
@@ -1572,8 +1588,8 @@ function renderWorkPlan({
   const centreSi = settings.centre_name_si || 'තාක්ෂණික පුහුණු මධ්‍යස්ථානය - අකුරැස්ස';
   const centreEn = settings.institute_name || 'Technical Training Centre – Akuressa';
 
-  const months = gantt.months || [];
-  const weeks = gantt.weeks || [];
+  const allMonths = gantt.months || [];
+  const allWeeks = gantt.weeks || [];
 
   const shortDate = (ymd) => {
     if (!ymd) return '-';
@@ -1581,16 +1597,125 @@ function renderWorkPlan({
     return `${d}.${m}.${y.slice(2)}`;
   };
 
+  // Build sheets configuration (single full page or 2x2 poster puzzle: 4 quadrants)
+  let sheets = [];
+  if (isSplit4) {
+    const halfWeeksIdx = Math.ceil(allWeeks.length / 2);
+    const leftWeeks = allWeeks.slice(0, halfWeeksIdx);
+    const rightWeeks = allWeeks.slice(halfWeeksIdx);
+
+    const halfModsIdx = Math.ceil(modules.length / 2);
+    const topModules = modules.slice(0, halfModsIdx);
+    const bottomModules = modules.slice(halfModsIdx);
+
+    // Group weeks into months for left and right
+    const makeMonths = (subWeeks) => {
+      const res = [];
+      let curMonth = null;
+      for (const w of subWeeks) {
+        if (!curMonth || curMonth.monthKey !== w.monthKey) {
+          curMonth = {
+            monthKey: w.monthKey,
+            label: w.monthLabel,
+            weeksCount: 0,
+            plannedHours: 0
+          };
+          res.push(curMonth);
+        }
+        curMonth.weeksCount++;
+        curMonth.plannedHours = Math.round(((curMonth.plannedHours || 0) + (w.plannedHours || 0)) * 10) / 10;
+      }
+      return res;
+    };
+
+    const leftMonths = makeMonths(leftWeeks);
+    const rightMonths = makeMonths(rightWeeks);
+
+    sheets = [
+      {
+        partNo: 1,
+        title: 'TOP-LEFT [1/4] — Paste Top Left',
+        side: 'left',
+        rowPart: 'top',
+        weeks: leftWeeks,
+        months: leftMonths,
+        modules: topModules,
+        modOffset: 0,
+        showMasthead: true,
+        showThead: true,
+        showTfoot: false,
+        showFooter: false
+      },
+      {
+        partNo: 2,
+        title: 'TOP-RIGHT [2/4] — Paste Top Right',
+        side: 'right',
+        rowPart: 'top',
+        weeks: rightWeeks,
+        months: rightMonths,
+        modules: topModules,
+        modOffset: 0,
+        showMasthead: true,
+        showThead: true,
+        showTfoot: false,
+        showFooter: false
+      },
+      {
+        partNo: 3,
+        title: 'BOTTOM-LEFT [3/4] — Paste Bottom Left',
+        side: 'left',
+        rowPart: 'bottom',
+        weeks: leftWeeks,
+        months: leftMonths,
+        modules: bottomModules,
+        modOffset: halfModsIdx,
+        showMasthead: false,
+        showThead: false,
+        showTfoot: true,
+        showFooter: true
+      },
+      {
+        partNo: 4,
+        title: 'BOTTOM-RIGHT [4/4] — Paste Bottom Right',
+        side: 'right',
+        rowPart: 'bottom',
+        weeks: rightWeeks,
+        months: rightMonths,
+        modules: bottomModules,
+        modOffset: halfModsIdx,
+        showMasthead: false,
+        showThead: false,
+        showTfoot: true,
+        showFooter: true
+      }
+    ];
+  } else {
+    sheets.push({
+      partNo: 1,
+      title: 'Full Chart',
+      side: 'full',
+      rowPart: 'full',
+      weeks: allWeeks,
+      months: allMonths,
+      modules,
+      modOffset: 0,
+      showMasthead: true,
+      showThead: true,
+      showTfoot: true,
+      showFooter: true
+    });
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)} (${isLegal ? 'Legal' : 'A4'})</title>
+  <title>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)} (${isA1 ? 'A1 Poster' : isA2 ? 'A2 Poster' : isLegal ? 'Legal' : 'A4'})</title>
   <style>
-    /* 20mm left binding/punch gutter */
+    /* Print margins & page dimensions */
     @page {
-      size: ${isLegal ? '355.6mm 215.9mm' : 'A4 landscape'};
-      margin: 8mm 8mm 8mm 20mm;
+      size: ${pageSizeParam};
+      margin: ${isPoster ? '15mm 15mm 15mm 20mm' : '8mm 8mm 8mm 20mm'};
     }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body {
@@ -1598,44 +1723,50 @@ function renderWorkPlan({
       padding: 0;
       color: #000;
       font-family: 'Book Antiqua', 'Georgia', 'Times New Roman', 'Iskoola Pota', serif;
-      font-size: ${isLegal ? '8pt' : '7.2pt'};
+      font-size: ${fontPt(isLegal ? 8 : 7.2)};
     }
     ${TOOLBAR_CSS}
     .sheet {
       width: 100%;
+      break-after: page;
+      page-break-after: always;
+    }
+    .sheet:last-of-type {
+      break-after: auto;
+      page-break-after: auto;
     }
     @media screen {
       .sheet {
         width: ${pageWidthMm};
         min-height: ${pageHeightMm};
-        padding: 8mm 8mm 8mm 20mm;
+        padding: ${isPoster ? '15mm 15mm 15mm 20mm' : '8mm 8mm 8mm 20mm'};
       }
     }
 
     /* Classic Official Title Masthead */
     .wp-masthead {
       text-align: center;
-      border-bottom: 2pt double #000;
-      padding-bottom: 4px;
-      margin-bottom: 5px;
+      border-bottom: ${isPoster ? '3pt' : '2pt'} double #000;
+      padding-bottom: ${dimMm(4)};
+      margin-bottom: ${dimMm(5)};
     }
     .wp-masthead .org-title {
-      font-size: ${isLegal ? '11pt' : '10pt'};
+      font-size: ${fontPt(isLegal ? 11 : 10)};
       font-weight: bold;
       letter-spacing: 0.4px;
       color: #000;
     }
     .wp-masthead .doc-title {
-      font-size: ${isLegal ? '13.5pt' : '12.5pt'};
+      font-size: ${fontPt(isLegal ? 13.5 : 12.5)};
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      margin: 1px 0;
+      margin: ${dimMm(1)} 0;
       text-decoration: underline;
       text-underline-offset: 2.5px;
     }
     .wp-masthead .course-sub {
-      font-size: ${isLegal ? '8.8pt' : '8pt'};
+      font-size: ${fontPt(isLegal ? 8.8 : 8)};
       font-weight: bold;
       color: #222;
     }
@@ -1644,13 +1775,13 @@ function renderWorkPlan({
     .wp-spec-strip {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 5px;
+      margin-bottom: ${dimMm(5)};
       font-family: 'Times New Roman', Times, serif;
-      font-size: ${isLegal ? '8pt' : '7.3pt'};
+      font-size: ${fontPt(isLegal ? 8 : 7.3)};
     }
     .wp-spec-strip td {
-      border: 0.75pt solid #000;
-      padding: 2.5px 6px;
+      border: ${isPoster ? '1.2pt' : '0.75pt'} solid #000;
+      padding: ${dimMm(2.5)} ${dimMm(6)};
       background: #fafafa;
     }
     .wp-spec-strip td strong {
@@ -1666,10 +1797,22 @@ function renderWorkPlan({
       font-family: 'Calibri', 'Arial', sans-serif;
     }
     .gantt-table th, .gantt-table td {
-      border: 0.75pt solid #111;
-      padding: ${isLegal ? '2.5px 3px' : '2px 2px'};
+      border: ${isPoster ? '1.2pt' : '0.75pt'} solid #111;
+      padding: ${dimMm(isLegal ? 2.5 : 2)} ${dimMm(isLegal ? 3 : 2)};
       vertical-align: middle;
       overflow: hidden;
+    }
+    .sheet-right-tile .col-no,
+    .sheet-right-tile .col-code,
+    .sheet-right-tile .col-title,
+    .sheet-right-tile .col-hrs,
+    .sheet-right-tile .col-done,
+    .sheet-right-tile .col-dates,
+    .sheet-right-tile .col-days {
+      display: none !important;
+    }
+    .sheet-right-tile .tot-label-cell {
+      display: none !important;
     }
     .gantt-table thead th {
       background: #eaecef;
@@ -1677,48 +1820,48 @@ function renderWorkPlan({
       font-family: 'Times New Roman', Times, serif;
       font-weight: bold;
       text-align: center;
-      font-size: ${isLegal ? '7.4pt' : '6.6pt'};
+      font-size: ${fontPt(isLegal ? 7.4 : 6.6)};
       line-height: 1.15;
     }
     .gantt-table thead tr.month-row th.month-hdr {
       background: #d5d9e0;
       color: #000;
-      font-size: ${isLegal ? '7.8pt' : '7pt'};
+      font-size: ${fontPt(isLegal ? 7.8 : 7)};
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      padding: 2.5px 2px;
-      border-left: 1.2pt solid #000;
+      padding: ${dimMm(2.5)} ${dimMm(2)};
+      border-left: ${isPoster ? '2pt' : '1.2pt'} solid #000;
     }
     .gantt-table thead tr.week-row th.wk-hdr {
       background: #f3f4f6;
       font-family: 'Times New Roman', Times, serif;
-      font-size: ${isLegal ? '6.4pt' : '5.8pt'};
-      padding: 1.5px 1px;
+      font-size: ${fontPt(isLegal ? 6.4 : 5.8)};
+      padding: ${dimMm(1.5)} ${dimMm(1)};
     }
     .gantt-table thead tr.week-row th.wk-hdr.month-start {
-      border-left: 1.2pt solid #000;
+      border-left: ${isPoster ? '2pt' : '1.2pt'} solid #000;
     }
     .wk-dates {
       display: block;
-      font-size: ${isLegal ? '5.2pt' : '4.6pt'};
+      font-size: ${fontPt(isLegal ? 5.2 : 4.6)};
       font-weight: normal;
       color: #222;
       white-space: nowrap;
     }
 
-    .col-no { width: 5.5mm; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
-    .col-code { width: ${isLegal ? '12mm' : '10.5mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
-    .col-title { width: ${isLegal ? '60mm' : '47mm'}; text-align: left; }
-    .col-hrs { width: ${isLegal ? '15mm' : '13.5mm'}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${isLegal ? '7pt' : '6.3pt'}; }
-    .col-done { width: ${isLegal ? '10mm' : '8.8mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
-    .col-dates { width: ${isLegal ? '22mm' : '19.5mm'}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${isLegal ? '6.5pt' : '5.8pt'}; white-space: nowrap; }
-    .col-days { width: ${isLegal ? '7.5mm' : '6.5mm'}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-no { width: ${dimMm(5.5)}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-code { width: ${dimMm(isLegal ? 12 : 10.5)}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-title { width: ${dimMm(isLegal ? 60 : 47)}; text-align: left; }
+    .col-hrs { width: ${dimMm(isLegal ? 15 : 13.5)}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${fontPt(isLegal ? 7 : 6.3)}; }
+    .col-done { width: ${dimMm(isLegal ? 10 : 8.8)}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
+    .col-dates { width: ${dimMm(isLegal ? 22 : 19.5)}; text-align: center; font-family: 'Times New Roman', serif; font-size: ${fontPt(isLegal ? 6.5 : 5.8)}; white-space: nowrap; }
+    .col-days { width: ${dimMm(isLegal ? 7.5 : 6.5)}; text-align: center; font-weight: bold; font-family: 'Times New Roman', serif; }
 
     .mod-title-main {
       font-family: 'Book Antiqua', 'Times New Roman', serif;
       font-weight: bold;
       color: #000;
-      font-size: ${isLegal ? '7.6pt' : '6.8pt'};
+      font-size: ${fontPt(isLegal ? 7.6 : 6.8)};
       line-height: 1.15;
       white-space: nowrap;
       overflow: hidden;
@@ -1727,7 +1870,7 @@ function renderWorkPlan({
     .mod-sub-meta {
       font-family: 'Times New Roman', serif;
       font-style: italic;
-      font-size: ${isLegal ? '6pt' : '5.4pt'};
+      font-size: ${fontPt(isLegal ? 6 : 5.4)};
       color: #333;
       white-space: nowrap;
       overflow: hidden;
@@ -1735,35 +1878,33 @@ function renderWorkPlan({
     }
 
     .g-cell {
-      padding: 1.2px !important;
+      padding: ${dimMm(1.2)} !important;
       text-align: center;
       position: relative;
-      height: ${isLegal ? '7.4mm' : '6.7mm'};
+      height: ${dimMm(isLegal ? 7.4 : 6.7)};
     }
     .g-cell.month-start {
-      border-left: 1.2pt solid #000;
+      border-left: ${isPoster ? '2pt' : '1.2pt'} solid #000;
     }
 
-    /* Classic Print-Friendly Gantt Bars (Clean on both B&W and Color Printers) */
+    /* Gantt Bars */
     .g-bar {
       width: 100%;
       height: 100%;
-      min-height: ${isLegal ? '5.4mm' : '4.8mm'};
+      min-height: ${dimMm(isLegal ? 5.4 : 4.8)};
       display: flex;
       align-items: center;
       justify-content: center;
       font-family: 'Times New Roman', Times, serif;
-      font-size: ${isLegal ? '6.3pt' : '5.5pt'};
+      font-size: ${fontPt(isLegal ? 6.3 : 5.5)};
       font-weight: bold;
       line-height: 1;
     }
-    /* Completed: Deep Classic Ink Charcoal/Forest */
     .g-bar-done {
       background: #2c3e35;
       color: #ffffff;
-      border: 0.75pt solid #000;
+      border: ${isPoster ? '1pt' : '0.75pt'} solid #000;
     }
-    /* In Progress: Classic Hatched / Double-Framed Bar */
     .g-bar-partial {
       background: repeating-linear-gradient(
         -45deg,
@@ -1773,58 +1914,57 @@ function renderWorkPlan({
         #ffffff 6px
       );
       color: #000;
-      border: 1pt solid #000;
+      border: ${isPoster ? '1.5pt' : '1pt'} solid #000;
     }
-    /* Planned: Classic Framed Light Grey Tint */
     .g-bar-planned {
       background: #dfe3e8;
       color: #000;
-      border: 0.75pt solid #222;
+      border: ${isPoster ? '1pt' : '0.75pt'} solid #222;
     }
 
     .tot-row td {
       background: #eaecef;
       font-family: 'Times New Roman', Times, serif;
       font-weight: bold;
-      font-size: ${isLegal ? '7pt' : '6.2pt'};
+      font-size: ${fontPt(isLegal ? 7 : 6.2)};
       text-align: center;
-      border-top: 1.2pt solid #000;
-      border-bottom: 1.2pt solid #000;
+      border-top: ${isPoster ? '2pt' : '1.2pt'} solid #000;
+      border-bottom: ${isPoster ? '2pt' : '1.2pt'} solid #000;
     }
 
     .wp-footer {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-top: 7px;
-      padding-top: 5px;
+      margin-top: ${dimMm(7)};
+      padding-top: ${dimMm(5)};
       font-family: 'Book Antiqua', 'Times New Roman', serif;
-      font-size: ${isLegal ? '8pt' : '7.3pt'};
+      font-size: ${fontPt(isLegal ? 8 : 7.3)};
     }
     .legend-items {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: ${dimMm(14)};
       font-weight: bold;
     }
     .lg-box {
       display: inline-block;
-      width: 13px;
-      height: 9px;
+      width: ${dimMm(13)};
+      height: ${dimMm(9)};
       vertical-align: middle;
-      margin-right: 4px;
+      margin-right: ${dimMm(4)};
     }
     .sig-row {
       display: flex;
-      gap: 28mm;
+      gap: ${dimMm(28)};
     }
     .sig-block {
-      min-width: 55mm;
+      min-width: ${dimMm(55)};
     }
     .sig-line {
-      border-bottom: 0.75pt dotted #000;
-      height: 15px;
-      margin-bottom: 3px;
+      border-bottom: ${isPoster ? '1.2pt' : '0.75pt'} dotted #000;
+      height: ${dimMm(15)};
+      margin-bottom: ${dimMm(3)};
     }
   </style>
 </head>
@@ -1833,22 +1973,47 @@ function renderWorkPlan({
     <div>
       <strong>Master Training Work Plan (Gantt Chart) — ${esc(batch.name)}</strong>
       <span style="margin-left:10px;background:#1e293b;padding:3px 8px;border-radius:4px;font-size:11px;color:#cbd5e1;">
-        ${isLegal ? 'Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : 'A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
+        ${isA1 ? 'A1 Classroom Poster (841 × 594mm) · High-Res Wall Display' : isA2 ? 'A2 Large Board Poster (594 × 420mm) · High-Res Wall Display' : isSplit4 ? '4 Legal Landscape Pages (Tile / Combine) · 20mm Left Gutter' : isLegal ? 'Legal Landscape (355.6 × 215.9mm) · 20mm Left Gutter' : 'A4 Landscape (297 × 210mm) · 20mm Left Gutter'}
       </span>
     </div>
     <div style="display:flex;align-items:center;">
-      <a href="${a4Href}" class="btn ${!isLegal ? '' : 'btn-secondary'}" style="${!isLegal ? 'background:#059669;' : ''}">
-        A4 Landscape
+      <a href="${a4Href}" class="btn ${normPaper === 'a4' && !isSplit4 ? '' : 'btn-secondary'}" style="${normPaper === 'a4' && !isSplit4 ? 'background:#059669;' : ''}">
+        A4
       </a>
-      <a href="${legalHref}" class="btn ${isLegal ? '' : 'btn-secondary'}" style="${isLegal ? 'background:#059669;' : ''}">
-        Legal Landscape
+      <a href="${legalHref}" class="btn ${normPaper === 'legal' && !isSplit4 ? '' : 'btn-secondary'}" style="${normPaper === 'legal' && !isSplit4 ? 'background:#059669;' : ''}">
+        Legal
+      </a>
+      <a href="${split4Href}" class="btn ${isSplit4 ? '' : 'btn-secondary'}" style="${isSplit4 ? 'background:#059669;' : ''}">
+        4 × Legal (2×2)
+      </a>
+      <a href="${a2Href}" class="btn ${isA2 ? '' : 'btn-secondary'}" style="${isA2 ? 'background:#059669;' : ''}">
+        🖼️ A2 Poster
+      </a>
+      <a href="${a1Href}" class="btn ${isA1 ? '' : 'btn-secondary'}" style="${isA1 ? 'background:#059669;' : ''}">
+        🏛️ A1 Poster
       </a>
       <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
       <a href="${pdfHref}" class="btn">⬇️ Download PDF</a>
     </div>
   </div>
 
-  <section class="sheet">
+  ${sheets.map((sh) => {
+    const sWeeks = sh.weeks;
+    const sMonths = sh.months;
+    const sModules = sh.modules;
+    const isRightTile = isSplit4 && sh.side === 'right';
+    const isBottomTile = isSplit4 && sh.rowPart === 'bottom';
+
+    return `
+  <section class="sheet ${isSplit4 ? 'sheet-puzzle' : ''} ${isRightTile ? 'sheet-right-tile' : ''}">
+    ${isSplit4 ? `
+    <div class="puzzle-banner no-print-puzzle" style="background:#0f172a;color:#f8fafc;padding:3px 10px;font-size:7.5pt;font-family:sans-serif;margin-bottom:4px;display:flex;justify-content:space-between;border:1pt solid #000;">
+      <span>🧩 <strong>${sh.title}</strong> (Part ${sh.partNo} of 4)</span>
+      <span style="color:#94a3b8;">${isRightTile ? '✂️ Join left edge to Part ' + (sh.partNo - 1) : '✂️ Join right edge to Part ' + (sh.partNo + 1)}</span>
+    </div>
+    ` : ''}
+
+    ${(!isSplit4 || (!isRightTile && !isBottomTile)) ? `
     <div class="wp-masthead">
       <div class="org-title">ජාතික තරුණ සේවා සභාව — NATIONAL YOUTH SERVICES COUNCIL · ${esc(centreSi)} (${esc(centreEn)})</div>
       <div class="doc-title">පුහුණු ක්‍රියාකාරී සැලැස්ම — MASTER TRAINING WORK PLAN &amp; GANTT SCHEDULE</div>
@@ -1860,11 +2025,20 @@ function renderWorkPlan({
         <td><strong>Batch / Intake :-</strong> ${esc(batch.name)}</td>
         <td><strong>Commencement :-</strong> ${esc(totals.startDate || batch.start_date)}</td>
         <td><strong>Completion :-</strong> ${esc(totals.endDate || '-')}</td>
-        <td><strong>Duration :-</strong> ${ fmtHours(totals.curriculumHours || 720) } Hours (${totals.teachingDays || 0} Days / ${weeks.length} Weeks)</td>
+        <td><strong>Duration :-</strong> ${ fmtHours(totals.curriculumHours || 720) } Hours (${totals.teachingDays || 0} Days / ${allWeeks.length} Weeks)</td>
         <td><strong>Delivered to Date :-</strong> ${fmtHours(totals.delivered || 0)} Hours</td>
         <td><strong>Instructor :-</strong> ${esc(teacherName)}</td>
       </tr>
     </table>
+    ` : isSplit4 && isRightTile && !isBottomTile ? `
+    <!-- Top-Right puzzle placeholder to align row heights exactly with Top-Left -->
+    <div class="wp-masthead-placeholder" style="height: 18mm; border-bottom: 2pt double #000; margin-bottom: 5px; display: flex; align-items: center; justify-content: flex-end; padding-right: 5mm;">
+      <span style="font-size: 9pt; font-weight: bold; color: #475569;">[ PUZZLE TILE 2 / 4 — TOP-RIGHT ]</span>
+    </div>
+    <div class="wp-spec-strip-placeholder" style="height: 7.5mm; border: 0.75pt solid #000; background: #fafafa; margin-bottom: 5px; display: flex; align-items: center; justify-content: flex-end; padding-right: 5mm;">
+      <span style="font-size: 7.5pt; color: #475569;">Attach left edge to Tile 1 (Weeks 1–${sh.weeks[0]?.weekNo - 1 || 13})</span>
+    </div>
+    ` : ''}
 
     <table class="gantt-table">
       <thead>
@@ -1876,14 +2050,14 @@ function renderWorkPlan({
           <th rowspan="2" class="col-done">Taught<br><span style="font-weight:normal;font-size:5.5pt;">(Hrs)</span></th>
           <th rowspan="2" class="col-dates">Scheduled Period<br><span style="font-weight:normal;font-size:5.5pt;">(From – To)</span></th>
           <th rowspan="2" class="col-days">Days</th>
-          ${months.map(m => `
+          ${sMonths.map(m => `
             <th colspan="${m.weeksCount}" class="month-hdr">
               ${esc(m.label)} (${fmtHours(m.plannedHours)}h)
             </th>
           `).join('')}
         </tr>
         <tr class="week-row">
-          ${weeks.map(w => `
+          ${sWeeks.map(w => `
             <th class="wk-hdr ${w.weekInMonth === 1 ? 'month-start' : ''}" title="Week ${w.weekNo}: ${w.monday} to ${w.friday} (${w.plannedHours}h)">
               W${w.weekInMonth}
               <span class="wk-dates">${esc(w.monday.slice(8, 10))}–${esc(w.friday.slice(8, 10))}</span>
@@ -1892,11 +2066,12 @@ function renderWorkPlan({
         </tr>
       </thead>
       <tbody>
-        ${modules.map((m, idx) => {
+        ${sModules.map((m, idx) => {
           const taskList = (m.tasks || []).map(t => t.code).join(', ');
+          const realIdx = (sh.modOffset || 0) + idx + 1;
           return `
             <tr>
-              <td class="col-no">${idx + 1}</td>
+              <td class="col-no">${realIdx}</td>
               <td class="col-code">${esc(m.code)}</td>
               <td class="col-title">
                 <div class="mod-title-main">${esc(m.unit_title || m.title)}</div>
@@ -1914,7 +2089,7 @@ function renderWorkPlan({
                 ${shortDate(m.firstDate)} – ${shortDate(m.lastDate)}
               </td>
               <td class="col-days">${m.days || 0}</td>
-              ${weeks.map(w => {
+              ${sWeeks.map(w => {
                 const cell = m.weeklyHours && m.weeklyHours[w.weekNo];
                 const isMonthStart = w.weekInMonth === 1;
                 if (!cell || !cell.planned) {
@@ -1935,12 +2110,12 @@ function renderWorkPlan({
           `;
         }).join('')}
         <tr class="tot-row">
-          <td colspan="3" style="text-align:right;padding-right:8px;">TOTAL CURRICULUM HOURS &amp; WEEKLY ALLOCATION :-</td>
-          <td>${fmtHours(totals.curriculumHours || 720)}</td>
-          <td>${fmtHours(totals.delivered || 0)}</td>
-          <td>${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}</td>
-          <td>${totals.teachingDays || 0}</td>
-          ${weeks.map((w, wi) => `
+          <td colspan="3" class="tot-label-cell" style="text-align:right;padding-right:8px;">${sh.rowPart === 'top' ? 'PARTIAL SUB-TOTAL (HOURS) :-' : 'TOTAL CURRICULUM HOURS :-'}</td>
+          <td class="col-hrs">${fmtHours(totals.curriculumHours || 720)}</td>
+          <td class="col-done">${fmtHours(totals.delivered || 0)}</td>
+          <td class="col-dates">${shortDate(totals.startDate)} – ${shortDate(totals.endDate)}</td>
+          <td class="col-days">${totals.teachingDays || 0}</td>
+          ${sWeeks.map((w) => `
             <td class="${w.weekInMonth === 1 ? 'g-cell month-start' : ''}" style="font-size:${isLegal ? '6pt' : '5.3pt'};padding:1px;">
               ${w.plannedHours ? `${fmtHours(w.plannedHours)}` : '-'}
             </td>
@@ -1949,33 +2124,44 @@ function renderWorkPlan({
       </tbody>
     </table>
 
+    ${(!isSplit4 || isBottomTile) ? `
     <div class="wp-footer">
       <div>
+        ${!isRightTile ? `
         <div class="legend-items">
           <span>Legend :-</span>
           <span><span class="lg-box" style="background:#2c3e35;border:0.75pt solid #000;"></span>Completed / Taught Week</span>
           <span><span class="lg-box" style="background:repeating-linear-gradient(-45deg,#d1d5db,#d1d5db 2px,#fff 2px,#fff 4px);border:0.75pt solid #000;"></span>In Progress (Partial)</span>
-          <span><span class="lg-box" style="background:#dfe3e8;border:0.75pt solid #222;"></span>Planned Training Schedule (Hours/Week)</span>
+          <span><span class="lg-box" style="background:#dfe3e8;border:0.75pt solid #222;"></span>Planned Schedule</span>
         </div>
         <div style="margin-top:2px;color:#333;font-size:6.6pt;font-style:italic;">
-          * Synchronized with the Master Lesson Plan, Daily Timetable, and Official Public Holiday Calendar.
+          * Synchronized with Master Lesson Plan, Timetable, and Public Holidays.
         </div>
+        ` : `
+        <div style="color:#64748b;font-size:7pt;">[ Tile 4 / 4 — Bottom-Right ]</div>
+        `}
       </div>
 
       <div class="sig-row">
+        ${!isRightTile ? `
         <div class="sig-block">
           <div class="sig-line"></div>
           <div><strong>Prepared by :-</strong> ${esc(teacherName)}</div>
           <div style="font-size:6.8pt;color:#333;">${esc(teacherDesig)}</div>
         </div>
+        ` : `
         <div class="sig-block">
           <div class="sig-line"></div>
           <div><strong>Approved by :-</strong> ${esc(approverName)}</div>
           <div style="font-size:6.8pt;color:#333;">${esc(approverTitle)}</div>
         </div>
+        `}
       </div>
     </div>
+    ` : ''}
   </section>
+    `;
+  }).join('')}
 </body>
 </html>`;
 }
